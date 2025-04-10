@@ -13,7 +13,12 @@ async def get_session(session_id: str) -> Optional[SessionData]:
     return sessions.get(session_id)
 
 
-async def create_session(username: str, access_token: str, session_id: str) -> None:
+async def create_session(
+    username: str,
+    access_token: str,
+    session_id: str,
+    installation_id: Optional[int] = None,
+) -> None:
     """Creates a new session."""
     expires_at = datetime.utcnow() + timedelta(
         minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
@@ -24,6 +29,7 @@ async def create_session(username: str, access_token: str, session_id: str) -> N
         access_token=access_token,
         created_at=datetime.utcnow(),
         expires_at=expires_at,
+        installation_id=installation_id,
     )
 
     sessions[session_id] = session_data

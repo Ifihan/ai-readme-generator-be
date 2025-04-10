@@ -12,6 +12,7 @@ class SessionData(BaseModel):
     access_token: str
     created_at: datetime = Field(default_factory=datetime.now)
     expires_at: Optional[datetime] = None
+    installation_id: Optional[int] = None
 
     def __init__(self, **data):
         super().__init__(**data)

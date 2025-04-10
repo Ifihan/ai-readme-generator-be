@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
+import httpx
+
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Request, Query
 from fastapi.responses import JSONResponse, RedirectResponse
-from typing import Dict, Optional
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 
 from app.core.auth import (
@@ -48,8 +50,8 @@ async def login_redirect() -> RedirectResponse:
 
 @router.get("/callback")
 async def callback(
-    code: str,
-    state: Optional[str] = None,
+    code: str = Query(...),
+    state: Optional[str] = Query(None),
     response: Response = None,
     request: Request = None,
 ) -> RedirectResponse:
@@ -101,6 +103,183 @@ async def callback(
         raise AuthException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Authentication failed: {str(e)}",
+        )
+
+
+@router.get("/app-install")
+async def install_github_app() -> Dict[str, str]:
+    """Generate a URL for installing the GitHub App."""
+    from app.core.auth import get_github_app_install_url
+
+    install_url = get_github_app_install_url()
+    return {"install_url": install_url}
+
+
+@router.get("/app-callback")
+async def github_app_callback(
+    installation_id: int = Query(...),
+    setup_action: str = Query(None),
+    response: Response = None,
+) -> RedirectResponse:
+    """Handle the callback after GitHub App installation."""
+    try:
+        from app.core.auth import get_installation_access_token, generate_github_app_jwt
+
+        access_token = await get_installation_access_token(installation_id)
+
+        headers = {
+            "Authorization": f"token {access_token}",
+            "Accept": "application/vnd.github.v3+json",
+        }
+
+        async with httpx.AsyncClient() as client:
+            installation_response = await client.get(
+                f"https://api.github.com/app/installations/{installation_id}",
+                headers={
+                    "Authorization": f"Bearer {generate_github_app_jwt()}",
+                    "Accept": "application/vnd.github.v3+json",
+                },
+            )
+
+            if installation_response.status_code != 200:
+                raise AuthException(
+                    status_code=installation_response.status_code,
+                    detail=f"Failed to get installation info: {installation_response.text}",
+                )
+
+            installation_data = installation_response.json()
+            username = installation_data["account"]["login"]
+
+            user_response = await client.get(
+                "https://api.github.com/user", headers=headers
+            )
+
+            if user_response.status_code != 200:
+                user_data = {"login": username}
+            else:
+                user_data = user_response.json()
+
+        session_id, session_data = await create_user_session(
+            username=user_data["login"],
+            access_token=access_token,
+            installation_id=installation_id,
+        )
+
+        # TODO:: change this redirect_url in prod(or use a config)
+        redirect_url = "http://localhost:4200/dashboard"
+        response_obj = RedirectResponse(url=redirect_url)
+
+        max_age = int((session_data.expires_at - datetime.utcnow()).total_seconds())
+
+        response_obj.set_cookie(
+            key=settings.SESSION_COOKIE_NAME,
+            value=session_id,
+            httponly=True,
+            max_age=max_age,
+            path="/",
+            secure=False,  # Change to True in production
+            samesite="lax",
+        )
+
+        return response_obj
+    except Exception as e:
+        if isinstance(e, AuthException):
+            raise e
+        raise AuthException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"GitHub App installation failed: {str(e)}",
+        )
+
+
+@router.get("/installations/{installation_id}/repositories")
+async def get_installation_repositories(
+    installation_id: int,
+    session_data: SessionData = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Get repositories for a specific installation."""
+    try:
+        from app.core.auth import get_installation_access_token
+
+        token = await get_installation_access_token(installation_id)
+
+        url = f"https://api.github.com/installation/repositories"
+        headers = {
+            "Authorization": f"token {token}",
+            "Accept": "application/vnd.github.v3+json",
+        }
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                raise AuthException(
+                    status_code=response.status_code,
+                    detail=f"Failed to get repositories: {response.text}",
+                )
+
+            data = response.json()
+
+            # Simplify the repository data
+            simplified_repos = [
+                {
+                    "id": repo["id"],
+                    "name": repo["name"],
+                    "full_name": repo["full_name"],
+                    "html_url": repo["html_url"],
+                    "description": repo["description"],
+                    "private": repo["private"],
+                }
+                for repo in data["repositories"]
+            ]
+
+            return {
+                "repositories": simplified_repos,
+                "total_count": data["total_count"],
+            }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch installation repositories: {str(e)}",
+        )
+
+
+@router.get("/installations")
+async def get_installations(
+    session_data: SessionData = Depends(get_current_user),
+) -> List[Dict[str, Any]]:
+    """Get all GitHub app installations for the authenticated user."""
+    try:
+        from app.core.auth import generate_github_app_jwt
+
+        jwt_token = generate_github_app_jwt()
+
+        url = "https://api.github.com/app/installations"
+        headers = {
+            "Authorization": f"Bearer {jwt_token}",
+            "Accept": "application/vnd.github.v3+json",
+        }
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, headers=headers)
+            if response.status_code != 200:
+                raise AuthException(
+                    status_code=response.status_code,
+                    detail=f"Failed to get installations: {response.text}",
+                )
+
+            installations = response.json()
+
+            # Filter installations to only show those for the current user
+            user_installations = [
+                installation
+                for installation in installations
+                if installation["account"]["login"] == session_data.username
+            ]
+
+            return user_installations
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch GitHub app installations: {str(e)}",
         )
 
 

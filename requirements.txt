@@ -2,8 +2,10 @@ annotated-types==0.7.0
 anyio==3.7.1
 cachetools==5.5.2
 certifi==2025.1.31
+cffi==1.17.1
 charset-normalizer==3.4.1
 click==8.1.8
+cryptography==44.0.2
 dnspython==2.7.0
 email_validator==2.2.0
 fastapi==0.104.1
@@ -32,6 +34,7 @@ proto-plus==1.26.1
 protobuf==4.25.6
 pyasn1==0.6.1
 pyasn1_modules==0.4.2
+pycparser==2.22
 pydantic==2.4.2
 pydantic-settings==2.0.3
 pydantic_core==2.10.1
