@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     GITHUB_CLIENT_OAUTH_SECRET: str
     GITHUB_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/callback"
     GITHUB_APP_ID: str
-    GITHUB_APP_PRIVATE_KEY_PATH: str
+    GITHUB_APP_PRIVATE_KEY_VALUE: str
     GITHUB_APP_INSTALLATION_URL: str
 
     GEMINI_API_KEY: str

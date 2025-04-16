@@ -142,8 +142,14 @@ def generate_github_app_jwt() -> str:
     }
 
     # Read the private key
-    with open(settings.GITHUB_APP_PRIVATE_KEY_PATH, "rb") as key_file:
-        private_key = key_file.read()
+    # with open(settings.GITHUB_APP_PRIVATE_KEY_PATH, "rb") as key_file:
+    #     private_key = key_file.read()
+
+    # key = settings.GITHUB_APP_PRIVATE_KEY_PATH
+    # private_key = key.encode("utf-8")
+    private_key = settings.GITHUB_APP_PRIVATE_KEY_VALUE.replace("\\n", "\n").encode(
+        "utf-8"
+    )
 
     encoded_jwt = jwt.encode(payload, private_key, algorithm="RS256")
 
