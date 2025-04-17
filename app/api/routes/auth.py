@@ -79,8 +79,7 @@ async def callback(
             username=user_data["login"], access_token=access_token
         )
 
-        # TODO: change this redirect_url in prod(or use a config)
-        redirect_url = "http://localhost:4200/dashboard"
+        redirect_url = settings.REDIRECT_URL
         response_obj = RedirectResponse(url=redirect_url)
 
         session_data = await get_session(session_id)
@@ -166,7 +165,7 @@ async def github_app_callback(
         )
 
         # TODO:: change this redirect_url in prod(or use a config)
-        redirect_url = "http://localhost:4200/dashboard"
+        redirect_url = settings.REDIRECT_URL
         response_obj = RedirectResponse(url=redirect_url)
 
         max_age = int((session_data.expires_at - datetime.utcnow()).total_seconds())
