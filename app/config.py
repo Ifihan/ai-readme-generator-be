@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     GITHUB_APP_ID: str
     GITHUB_APP_PRIVATE_KEY_VALUE: str
     GITHUB_APP_INSTALLATION_URL: str
+    REDIRECT_URL: str
 
     GEMINI_API_KEY: str
     GEMINI_MODEL: str = "gemini-1.5-pro"
