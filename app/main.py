@@ -1,12 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.sessions import SessionMiddleware
 from fastapi.security import APIKeyCookie
 from app.exceptions import add_exception_handlers
 
 from app.config import settings
 from app.api.routes import auth
-from app.middlewares.session import SessionMiddleWare
+from app.middlewares import SessionMiddleware
 
 cookie_scheme = APIKeyCookie(name=settings.SESSION_COOKIE_NAME)
 
@@ -54,10 +53,7 @@ def create_application() -> FastAPI:
             allow_headers=["*"],
         )
 
-    # application.add_middleware(SessionMiddleWare)
-    application.add_middleware(
-        SessionMiddleware, secret_key=settings.SECRET_KEY, max_age=600
-    )
+    application.add_middleware(SessionMiddleware)
 
     # Include routers
     application.include_router(

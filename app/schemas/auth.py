@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Dict, Optional
+from typing import Optional
 from datetime import datetime, timedelta
 
 from app.config import settings
@@ -27,27 +27,22 @@ class SessionData(BaseModel):
         return datetime.now() > self.expires_at
 
 
-class GitHubAuthResponse(BaseModel):
-    """GitHub OAuth response model."""
+class GitHubInstallation(BaseModel):
+    """GitHub App installation model."""
 
-    access_token: str
-    token_type: str
-    scope: str
-
-
-class GitHubUser(BaseModel):
-    """GitHub user model."""
-
-    login: str
     id: int
-    avatar_url: str
-    url: str
-    name: Optional[str] = None
-    email: Optional[str] = None
+    account_login: str
+    repository_selection: str
+    app_id: int
+    target_type: str
 
 
-class TokenResponse(BaseModel):
-    """Token response model."""
+class Repository(BaseModel):
+    """Repository model."""
 
-    access_token: str
-    token_type: str = "bearer"
+    id: int
+    name: str
+    full_name: str
+    html_url: str
+    description: Optional[str] = None
+    private: bool = False

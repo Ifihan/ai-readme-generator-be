@@ -3,13 +3,14 @@ import time
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
-from typing import Callable, Optional
+from typing import Callable
+from datetime import datetime
 
-from app.core.session import cleanup_expired_sessions, refresh_session
+from app.core.session import cleanup_expired_sessions, refresh_session, get_session
 from app.config import settings
 
 
-class SessionMiddleWare(BaseHTTPMiddleware):
+class SessionMiddleware(BaseHTTPMiddleware):
     """Middleware to handle session management."""
 
     def __init__(
@@ -23,33 +24,35 @@ class SessionMiddleWare(BaseHTTPMiddleware):
         self.cleanup_interval = 60 * 15  # 15 minutes
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        """DProcess request and refresh session if needed."""
+        """Process request and refresh session if needed."""
         session_id = request.cookies.get(self.session_cookie_name)
-        respone = await call_next(request)
+        response = await call_next(request)
 
         if session_id:
             refreshed = await refresh_session(session_id)
             if refreshed:
-                from app.core.session import get_session
-                from datetime import datetime
-
                 session_data = await get_session(session_id)
-                max_age = (session_data.expires_at - datetime.utcnow()).total_seconds()
-                respone.set_cookie(
+                max_age = int(
+                    (session_data.expires_at - datetime.utcnow()).total_seconds()
+                )
+                response.set_cookie(
                     key=self.session_cookie_name,
                     value=session_id,
                     httponly=True,
                     max_age=max_age,
                     path="/",
-                    secure=True,  # TODO: set to True in production
+                    secure=settings.ENVIRONMENT
+                    == "production",  # Set to True in production
                     samesite="lax",
                 )
+
+        # Periodically clean up expired sessions
         current_time = time.time()
         if current_time - self.last_cleanup >= self.cleanup_interval:
-            asyncio.create_task(cleanup_expired_sessions())
+            asyncio.create_task(self._cleanup_sessions())
             self.last_cleanup = current_time
 
-        return respone  # Add this line
+        return response
 
     async def _cleanup_sessions(self):
         """Cleanup expired sessions in the background."""

@@ -1,3 +1,3 @@
-from app.middlewares.session import SessionMiddleWare
+from app.middlewares.session import SessionMiddleware
 
 __all__ = ["SessionMiddleware"]
