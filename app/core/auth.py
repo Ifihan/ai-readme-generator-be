@@ -2,6 +2,8 @@ import httpx
 import jwt
 import secrets
 import time
+from pathlib import Path
+import base64
 from typing import Any, Dict, Optional, Tuple
 
 from app.config import settings
@@ -20,46 +22,35 @@ def get_github_app_install_url() -> str:
     return settings.GITHUB_APP_INSTALLATION_URL
 
 
-# def generate_github_app_jwt() -> str:
-#     """Generate a JWT for GitHub App authentication."""
-#     now = int(time.time())
-#     payload = {
-#         "iat": now,  # Issued at time
-#         "exp": now + (10 * 60),  # JWT expires in 10 minutes
-#         "iss": settings.GITHUB_APP_ID,
-#     }
-
-#     # Use the private key from settings
-#     private_key = settings.GITHUB_APP_PRIVATE_KEY_VALUE.replace("\\n", "\n").encode(
-#         "utf-8"
-#     )
-
-#     # Sign the JWT with the private key
-#     encoded_jwt = jwt.encode(payload, private_key, algorithm="RS256")
-
-#     return encoded_jwt
-
-
 def generate_github_app_jwt() -> str:
     """Generate a JWT for GitHub App authentication."""
+
     now = int(time.time())
+
     payload = {
-        "iat": now,  # Issued at time
-        "exp": now + (10 * 60),  # JWT expires in 10 minutes
+        "iat": now,
+        "exp": now + (10 * 60),
         "iss": settings.GITHUB_APP_ID,
     }
 
-    private_key = settings.GITHUB_APP_PRIVATE_KEY_VALUE
-    if "-----BEGIN RSA PRIVATE KEY-----" not in private_key:
-        private_key = private_key.replace("\\n", "\n")
+    # Read base64-encoded PEM from environment
+    private_key_b64 = settings.GITHUB_APP_PRIVATE_KEY
 
+    if not private_key_b64:
+        raise ValueError("Private key base64 is missing")
+
+    try:
+        private_key_bytes = base64.b64decode(private_key_b64)
+        private_key = private_key_bytes.decode("utf-8")
+    except Exception as e:
+        raise ValueError(f"Failed to decode PEM base64: {str(e)}")
+
+    # Now you have the real PEM key in memory
     try:
         encoded_jwt = jwt.encode(payload, private_key, algorithm="RS256")
         return encoded_jwt
     except Exception as e:
         print(f"JWT encoding error: {str(e)}")
-        if not private_key.startswith("-----BEGIN"):
-            print("Warning: Private key does not appear to have proper PEM headers")
         raise
 
 

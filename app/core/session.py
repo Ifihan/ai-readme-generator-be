@@ -1,11 +1,10 @@
 from datetime import datetime, timedelta
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 
 from app.schemas.auth import SessionData
 from app.config import settings
 
-# TODO: use redis or another persistent storage for session data
-sessions: Dict[str, SessionData] = {}
+sessions: Dict[str, SessionData] = {}  # should use Redis
 
 
 async def get_session(session_id: str) -> Optional[SessionData]:
@@ -41,12 +40,12 @@ async def delete_session(session_id: str) -> None:
         del sessions[session_id]
 
 
-async def cleanup_expired_sessions() -> None:
-    """Cleanup expired sessions."""
+async def cleanup_expired_sessions() -> int:
+    """Cleanup expired sessions and return the count of removed sessions."""
     now = datetime.utcnow()
 
     expired_sessions = [
-        session_id for session_id, data in sessions.items() if data.expires_at < now
+        session_id for session_id, data in sessions.items() if data.is_expired
     ]
 
     for session_id in expired_sessions:
@@ -60,7 +59,7 @@ def validate_session(session_data: SessionData) -> bool:
     return not session_data.is_expired
 
 
-async def refresh_session(session_id: str) -> None:
+async def refresh_session(session_id: str) -> bool:
     """Refresh the session expiration time."""
     session_data = await get_session(session_id)
     if not session_data:
@@ -83,4 +82,4 @@ async def find_session_by_username(username: str) -> Optional[str]:
     for session_id, session_data in sessions.items():
         if session_data.username == username and not session_data.is_expired:
             return session_id
-        return None
+    return None

@@ -17,7 +17,7 @@ class Settings(BaseSettings):
 
     # GitHub App settings
     GITHUB_APP_ID: str
-    GITHUB_APP_PRIVATE_KEY_VALUE: str
+    GITHUB_APP_PRIVATE_KEY: str
     GITHUB_APP_INSTALLATION_URL: str
 
     REDIRECT_URL: str
