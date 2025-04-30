@@ -8,7 +8,11 @@ class Settings(BaseSettings):
 
     API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str = "AI README Generator"
-    BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:4200", "http://localhost:3000"]
+    BACKEND_CORS_ORIGINS: List[str] = [
+        "http://localhost:4200",
+        "http://localhost:8000",
+        "https://ai-readme-generator-be-912048666815.us-central1.run.app",
+    ]
     ENVIRONMENT: str = "development"  # Options: development, production, testing
 
     SECRET_KEY: str = secrets.token_urlsafe(32)
@@ -19,11 +23,12 @@ class Settings(BaseSettings):
     GITHUB_APP_ID: str
     GITHUB_APP_PRIVATE_KEY: str
     GITHUB_APP_INSTALLATION_URL: str
+    GITHUB_TEST_TOKEN: Optional[str]
 
     REDIRECT_URL: str
 
     GEMINI_API_KEY: str
-    GEMINI_MODEL: str = "gemini-1.5-pro"
+    GEMINI_MODEL: str
 
     class Config:
         env_file = ".env"
