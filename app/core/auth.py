@@ -24,12 +24,13 @@ def get_github_app_install_url() -> str:
 
 def generate_github_app_jwt() -> str:
     """Generate a JWT for GitHub App authentication."""
+    import datetime
 
-    now = int(time.time())
+    now = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
 
     payload = {
         "iat": now,
-        "exp": now + (10 * 60),
+        "exp": now + (5 * 60),
         "iss": settings.GITHUB_APP_ID,
     }
 

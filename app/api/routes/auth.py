@@ -56,7 +56,6 @@ async def app_callback(
         if installation_id:
             # Get installation token
             access_token = await get_installation_access_token(installation_id)
-            print(f"ACCESS TOKEN: {access_token}")
 
             # Get installation and user data
             async with httpx.AsyncClient() as client:

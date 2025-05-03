@@ -11,7 +11,10 @@ class Settings(BaseSettings):
     BACKEND_CORS_ORIGINS: List[str] = [
         "http://localhost:4200",
         "http://localhost:8000",
+        "http://localhost:3000",
+        "http://127.0.0.1:8000",
         "https://ai-readme-generator-be-912048666815.us-central1.run.app",
+        "0.0.0.0",
     ]
     ENVIRONMENT: str = "development"  # Options: development, production, testing
 
@@ -29,6 +32,15 @@ class Settings(BaseSettings):
 
     GEMINI_API_KEY: str
     GEMINI_MODEL: str
+
+    # Database settings
+    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/readme_generator"
+    DATABASE_TEST_URL: str = (
+        "postgresql://postgres:postgres@localhost:5432/test_readme_generator"
+    )
+
+    # Redis settings
+    REDIS_URL: str = "redis://localhost:6379/0"
 
     class Config:
         env_file = ".env"

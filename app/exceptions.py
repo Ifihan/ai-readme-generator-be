@@ -29,6 +29,18 @@ class AIGenerationException(APIException):
     pass
 
 
+class ReadmeGenerationException(APIException):
+    """Exception raised for errors in README generation."""
+
+    pass
+
+
+class GeminiApiException(APIException):
+    """Exception raised for errors with the Gemini API."""
+
+    pass
+
+
 class AuthException(APIException):
     """Exception raised for errors in the authentication."""
 
