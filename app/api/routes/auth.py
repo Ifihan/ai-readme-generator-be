@@ -24,8 +24,7 @@ from app.core.auth import (
     delete_session,
 )
 from app.core.session import get_session
-from app.api.deps import get_current_user
-from app.schemas.auth import SessionData
+from app.db.users import get_user_by_username, create_user
 from app.config import settings
 from app.exceptions import AuthException
 
@@ -89,6 +88,11 @@ async def app_callback(
                 user_data = {"login": username}
                 if user_response.status_code == 200:
                     user_data = user_response.json()
+
+            # Create or update user in database
+            await create_user(
+                username=user_data["login"], installation_id=installation_id
+            )
 
             # Create user session
             session_id, session_data = await create_user_session(
@@ -234,10 +238,15 @@ async def get_me(
         # Verify the token
         try:
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+
+            # Get user from database to include any additional info
+            user = await get_user_by_username(payload["sub"])
+
             return {
                 "username": payload["sub"],
                 "installation_id": payload.get("installation_id"),
                 "expires": payload.get("exp"),
+                "user_data": user if user else None,
             }
         except jwt.PyJWTError as e:
             raise HTTPException(

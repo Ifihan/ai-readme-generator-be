@@ -33,14 +33,9 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str
     GEMINI_MODEL: str
 
-    # Database settings
-    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/readme_generator"
-    DATABASE_TEST_URL: str = (
-        "postgresql://postgres:postgres@localhost:5432/test_readme_generator"
-    )
-
-    # Redis settings
-    REDIS_URL: str = "redis://localhost:6379/0"
+    # MongoDB settings
+    MONGODB_URI: str = "mongodb://localhost:27017"
+    MONGODB_DB_NAME: str = "readmegenerator"
 
     class Config:
         env_file = ".env"

@@ -32,19 +32,19 @@ class SessionMiddleware(BaseHTTPMiddleware):
             refreshed = await refresh_session(session_id)
             if refreshed:
                 session_data = await get_session(session_id)
-                max_age = int(
-                    (session_data.expires_at - datetime.utcnow()).total_seconds()
-                )
-                response.set_cookie(
-                    key=self.session_cookie_name,
-                    value=session_id,
-                    httponly=True,
-                    max_age=max_age,
-                    path="/",
-                    secure=settings.ENVIRONMENT
-                    == "production",  # Set to True in production
-                    samesite="lax",
-                )
+                if session_data:
+                    max_age = int(
+                        (session_data.expires_at - datetime.utcnow()).total_seconds()
+                    )
+                    response.set_cookie(
+                        key=self.session_cookie_name,
+                        value=session_id,
+                        httponly=True,
+                        max_age=max_age,
+                        path="/",
+                        secure=settings.ENVIRONMENT == "production",
+                        samesite="lax",
+                    )
 
         # Periodically clean up expired sessions
         current_time = time.time()

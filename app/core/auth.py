@@ -14,6 +14,7 @@ from app.core.session import (
     find_session_by_username,
     get_session,
 )
+from app.db.users import create_user
 from app.exceptions import AuthException
 
 
@@ -118,6 +119,10 @@ async def create_user_session(
     username: str, access_token: str, installation_id: Optional[int] = None
 ) -> Tuple[str, SessionData]:
     """Create a session for the user, replacing any existing session."""
+    # Update or create user in database
+    await create_user(username=username, installation_id=installation_id)
+
+    # Handle existing session
     existing_session_id = await find_session_by_username(username)
     if existing_session_id:
         await delete_session(existing_session_id)
