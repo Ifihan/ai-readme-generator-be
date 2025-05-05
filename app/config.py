@@ -34,8 +34,8 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str
 
     # MongoDB settings
-    MONGODB_URI: str = "mongodb://localhost:27017"
-    MONGODB_DB_NAME: str = "readmegenerator"
+    MONGODB_URI: str
+    MONGODB_DB_NAME: str
 
     class Config:
         env_file = ".env"
