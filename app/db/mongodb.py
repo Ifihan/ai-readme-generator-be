@@ -24,7 +24,6 @@ async def connect_to_mongodb():
 
     # Test connection
     try:
-        # The ismaster command is used to check if the connection is active
         await db.client.admin.command("ismaster")
         logger.info("Connected to MongoDB")
     except ConnectionFailure:

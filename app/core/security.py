@@ -1,5 +1,7 @@
 import secrets
 import jwt
+import re
+
 
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
@@ -28,12 +30,12 @@ def create_access_token(subject: str, expires_delta: Optional[timedelta] = None)
         expire = datetime.utcnow() + expires_delta
     else:
         expire = datetime.utcnow() + timedelta(
-            minutes == settings.ACCESS_TOKEN_EXPIRE_MINUTES
+            minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
         )
 
     to_encode = {"exp": expire, "sub": str(subject)}
 
-    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm == "HS256")
+    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm="HS256")
 
     return encoded_jwt
 
@@ -61,21 +63,6 @@ def is_valid_github_redirect_url(url: str) -> bool:
     parsed_url = parse.urlparse(url)
 
     return parsed_url.netloc in allowed_domains
-
-
-# def is_valid_github_token_format(token: str) -> bool:
-#     """Checks if the given token is a valid GitHub token."""
-#     if not token or len(token) != 40:
-#         return False
-
-#     try:
-#         int(token, 16)
-#         return True
-#     except ValueError:
-#         return False
-
-
-import re
 
 
 def is_valid_github_token_format(token: str) -> bool:

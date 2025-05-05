@@ -13,7 +13,7 @@ from fastapi import (
     Header,
 )
 from fastapi.responses import JSONResponse, RedirectResponse
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from datetime import datetime, timedelta
 
 from app.core.auth import (
@@ -31,11 +31,87 @@ from app.exceptions import AuthException
 router = APIRouter(prefix="/auth")
 
 
-@router.get("/login")
-async def login() -> JSONResponse:
-    """Initiate the GitHub App installation and login process."""
+@router.get("/login", response_model=None)
+async def login(
+    request: Request,
+    authorization: str = Header(None),
+) -> Union[JSONResponse, RedirectResponse]:
+    """Handle login logic - check if user exists and has valid installation."""
+
+    # If authorization header is provided, check if user is already logged in
+    if authorization and authorization.startswith("Bearer "):
+        try:
+            token = authorization.split(" ")[1]
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+            username = payload["sub"]
+            installation_id = payload.get("installation_id")
+
+            # Check if user exists and has valid installation
+            user = await get_user_by_username(username)
+            if user and installation_id:
+                # User is already authenticated with valid installation
+                return JSONResponse(
+                    {
+                        "status": "authenticated",
+                        "username": username,
+                        "installation_id": installation_id,
+                        "token": token,  # Return existing token
+                    }
+                )
+        except (jwt.PyJWTError, Exception):
+            # Token is invalid or expired, continue to installation flow
+            pass
+
+    # Check if a GitHub user parameter is provided for checking existing users
+    github_username = request.query_params.get("username")
+    if github_username:
+        user = await get_user_by_username(github_username)
+        if user and user.installation_id:
+            # User exists with installation, check if token is still valid
+            try:
+                # Try to use the existing installation
+                install_token = await get_installation_access_token(
+                    user.installation_id
+                )
+
+                # Create new session for existing user
+                session_id, session_data = await create_user_session(
+                    username=github_username,
+                    access_token=install_token,
+                    installation_id=user.installation_id,
+                )
+
+                # Generate JWT token
+                payload = {
+                    "sub": github_username,
+                    "installation_id": user.installation_id,
+                    "exp": datetime.utcnow()
+                    + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+                    "iat": datetime.utcnow(),
+                }
+                token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
+
+                return JSONResponse(
+                    {
+                        "status": "login_successful",
+                        "token": token,
+                        "username": github_username,
+                        "installation_id": user.installation_id,
+                    }
+                )
+            except Exception:
+                # Installation token is invalid, need to reinstall
+                pass
+
+    # No valid authentication found, provide install URL
     install_url = get_github_app_install_url()
-    return JSONResponse({"install_url": install_url})
+    return JSONResponse(
+        {
+            "status": "needs_installation",
+            "install_url": install_url,
+            "message": "Please install the GitHub App to continue",
+        }
+    )
 
 
 @router.get("/callback")
