@@ -33,6 +33,7 @@ env/
 
 # Environment variables
 .env
+.env.test
 
 # Logs
 logs/
