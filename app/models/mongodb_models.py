@@ -25,6 +25,12 @@ class UserModel(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     username: str
     installation_id: Optional[int] = None
+    email: Optional[str] = None
+    full_name: Optional[str] = None
+    avatar_url: Optional[str] = None
+    github_id: Optional[int] = None
+    public_repos: Optional[int] = None
+    company: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     last_login: datetime = Field(default_factory=datetime.utcnow)
 
@@ -61,6 +67,12 @@ def user_helper(user) -> Dict[str, Any]:
         "id": str(user["_id"]),
         "username": user["username"],
         "installation_id": user.get("installation_id"),
+        "email": user.get("email"),
+        "full_name": user.get("full_name"),
+        "avatar_url": user.get("avatar_url"),
+        "github_id": user.get("github_id"),
+        "public_repos": user.get("public_repos"),
+        "company": user.get("company"),
         "created_at": user["created_at"],
         "last_login": user["last_login"],
     }

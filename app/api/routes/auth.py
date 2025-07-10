@@ -33,10 +33,9 @@ router = APIRouter(prefix="/auth")
 
 @router.get("/login", response_model=None)
 async def login(
-    request: Request,
     authorization: str = Header(None),
 ) -> Union[JSONResponse, RedirectResponse]:
-    """Handle login logic - check if user exists and has valid installation."""
+    """Handle login logic - redirect to GitHub App installation for authentication."""
 
     # If authorization header is provided, check if user is already logged in
     if authorization and authorization.startswith("Bearer "):
@@ -55,61 +54,21 @@ async def login(
                         "status": "authenticated",
                         "username": username,
                         "installation_id": installation_id,
-                        "token": token,  # Return existing token
+                        "token": token,
                     }
                 )
         except (jwt.PyJWTError, Exception):
             # Token is invalid or expired, continue to installation flow
             pass
 
-    # Check if a GitHub user parameter is provided for checking existing users
-    github_username = request.query_params.get("username")
-    if github_username:
-        user = await get_user_by_username(github_username)
-        if user and user.installation_id:
-            # User exists with installation, check if token is still valid
-            try:
-                # Try to use the existing installation
-                install_token = await get_installation_access_token(
-                    user.installation_id
-                )
-
-                # Create new session for existing user
-                session_id, session_data = await create_user_session(
-                    username=github_username,
-                    access_token=install_token,
-                    installation_id=user.installation_id,
-                )
-
-                # Generate JWT token
-                payload = {
-                    "sub": github_username,
-                    "installation_id": user.installation_id,
-                    "exp": datetime.utcnow()
-                    + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
-                    "iat": datetime.utcnow(),
-                }
-                token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
-
-                return JSONResponse(
-                    {
-                        "status": "login_successful",
-                        "token": token,
-                        "username": github_username,
-                        "installation_id": user.installation_id,
-                    }
-                )
-            except Exception:
-                # Installation token is invalid, need to reinstall
-                pass
-
-    # No valid authentication found, provide install URL
+    # For new users or users needing to authenticate, redirect to GitHub App installation
+    # GitHub will handle both new installations and existing app approvals
     install_url = get_github_app_install_url()
     return JSONResponse(
         {
             "status": "needs_installation",
             "install_url": install_url,
-            "message": "Please install the GitHub App to continue",
+            "message": "Please install or authorize the GitHub App to continue",
         }
     )
 
@@ -167,7 +126,9 @@ async def app_callback(
 
             # Create or update user in database
             await create_user(
-                username=user_data["login"], installation_id=installation_id
+                username=user_data["login"], 
+                installation_id=installation_id,
+                github_data=user_data
             )
 
             # Create user session
@@ -400,3 +361,38 @@ async def refresh_token(
 async def logout() -> Dict[str, str]:
     """Logout endpoint for token-based authentication."""
     return {"message": "Logged out successfully. Please discard your token."}
+
+
+@router.post("/test/create-user")
+async def create_test_user(username: str, installation_id: int = 12345) -> Dict[str, Any]:
+    """Create a test user for development/testing purposes."""
+    test_github_data = {
+        "login": username,
+        "id": 12345,
+        "email": f"{username}@example.com",
+        "name": f"Test User {username}",
+        "avatar_url": f"https://avatars.githubusercontent.com/{username}",
+        "public_repos": 10,
+        "company": "Test Company"
+    }
+    
+    user = await create_user(
+        username=username, 
+        installation_id=installation_id,
+        github_data=test_github_data
+    )
+    
+    # Generate test JWT token
+    payload = {
+        "sub": username,
+        "installation_id": installation_id,
+        "exp": datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+        "iat": datetime.utcnow(),
+    }
+    token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
+    
+    return {
+        "user": user,
+        "token": token,
+        "message": f"Test user '{username}' created successfully"
+    }
