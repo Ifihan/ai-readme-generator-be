@@ -487,3 +487,172 @@ async def create_test_user(
         "token": token,
         "message": f"Test user '{username}' created successfully",
     }
+
+
+# GitHub App Settings Endpoints
+@router.get("/settings/installation")
+async def get_installation_settings(
+    authorization: str = Header(...),
+) -> Dict[str, Any]:
+    """Get GitHub App installation details and settings."""
+    try:
+        if not authorization.startswith("Bearer "):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authorization header format",
+            )
+
+        token = authorization.split(" ")[1]
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        username = payload["sub"]
+        installation_id = payload.get("installation_id")
+
+        if not installation_id:
+            return {
+                "status": "no_installation",
+                "message": "No GitHub App installation found",
+                "install_url": get_github_app_install_url(),
+            }
+
+        # Get installation details from GitHub
+        async with httpx.AsyncClient() as client:
+            # Get installation info
+            installation_response = await client.get(
+                f"https://api.github.com/app/installations/{installation_id}",
+                headers={
+                    "Authorization": f"Bearer {generate_github_app_jwt()}",
+                    "Accept": "application/vnd.github.v3+json",
+                },
+            )
+
+            if installation_response.status_code != 200:
+                raise HTTPException(
+                    status_code=installation_response.status_code,
+                    detail="Failed to get installation details",
+                )
+
+            installation_data = installation_response.json()
+
+            # Get installation repositories
+            install_token = await get_installation_access_token(installation_id)
+            repos_response = await client.get(
+                "https://api.github.com/installation/repositories",
+                headers={
+                    "Authorization": f"token {install_token}",
+                    "Accept": "application/vnd.github.v3+json",
+                },
+            )
+
+            repos_data = repos_response.json() if repos_response.status_code == 200 else {"repositories": []}
+
+            return {
+                "installation": {
+                    "id": installation_data["id"],
+                    "account": installation_data["account"]["login"],
+                    "app_slug": installation_data["app_slug"],
+                    "created_at": installation_data["created_at"],
+                    "updated_at": installation_data["updated_at"],
+                    "permissions": installation_data["permissions"],
+                    "events": installation_data["events"],
+                    "repository_selection": installation_data["repository_selection"],
+                },
+                "repositories": {
+                    "total_count": repos_data.get("total_count", 0),
+                    "repositories": [
+                        {
+                            "id": repo["id"],
+                            "name": repo["name"],
+                            "full_name": repo["full_name"],
+                            "private": repo["private"],
+                            "permissions": repo.get("permissions", {}),
+                        }
+                        for repo in repos_data.get("repositories", [])
+                    ],
+                },
+                "settings_url": f"https://github.com/settings/installations/{installation_id}",
+            }
+
+    except jwt.PyJWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get installation settings: {str(e)}",
+        )
+
+
+@router.post("/settings/reinstall")
+async def reinstall_github_app(
+    authorization: str = Header(...),
+) -> Dict[str, Any]:
+    """Generate reinstall URL for GitHub App (for changing permissions)."""
+    try:
+        if not authorization.startswith("Bearer "):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authorization header format",
+            )
+
+        token = authorization.split(" ")[1]
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        
+        install_url = get_github_app_install_url()
+        
+        return {
+            "status": "reinstall_ready",
+            "install_url": install_url,
+            "message": "Redirect user to this URL to reconfigure GitHub App permissions",
+        }
+
+    except jwt.PyJWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+
+
+@router.delete("/settings/revoke")
+async def revoke_github_app(
+    authorization: str = Header(...),
+) -> Dict[str, Any]:
+    """Revoke GitHub App installation and clear user data."""
+    try:
+        if not authorization.startswith("Bearer "):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authorization header format",
+            )
+
+        token = authorization.split(" ")[1]
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        username = payload["sub"]
+        installation_id = payload.get("installation_id")
+
+        if not installation_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No GitHub App installation to revoke",
+            )
+
+        # Clear installation_id from user record
+        await create_user(username=username, installation_id=None, github_data=None)
+
+        return {
+            "status": "revoked",
+            "message": "GitHub App access revoked. You'll need to reinstall to continue using the service.",
+            "github_revoke_url": f"https://github.com/settings/installations/{installation_id}",
+        }
+
+    except jwt.PyJWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to revoke GitHub App: {str(e)}",
+        )
