@@ -143,3 +143,69 @@ async def create_user_session(
 async def refresh_installation_token(installation_id: int) -> str:
     """Refresh the installation token for a GitHub App installation."""
     return await get_installation_access_token(installation_id)
+
+
+# OAuth Helper Functions
+async def get_oauth_access_token(code: str) -> Dict[str, Any]:
+    """Exchange OAuth code for access token."""
+    url = "https://github.com/login/oauth/access_token"
+    
+    data = {
+        "client_id": settings.GITHUB_CLIENT_ID,
+        "client_secret": settings.GITHUB_CLIENT_SECRET,
+        "code": code,
+    }
+    
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
+    
+    async with httpx.AsyncClient() as client:
+        response = await client.post(url, data=data, headers=headers)
+        if response.status_code != 200:
+            raise AuthException(
+                status_code=response.status_code,
+                detail=f"Failed to get OAuth access token: {response.text}",
+            )
+        
+        token_data = response.json()
+        if "error" in token_data:
+            raise AuthException(
+                status_code=400,
+                detail=f"OAuth error: {token_data.get('error_description', token_data['error'])}",
+            )
+        
+        return token_data
+
+
+async def get_github_user_oauth(access_token: str) -> Dict[str, Any]:
+    """Get GitHub user info using OAuth access token."""
+    headers = {
+        "Authorization": f"token {access_token}",
+        "Accept": "application/vnd.github.v3+json",
+    }
+    
+    async with httpx.AsyncClient() as client:
+        response = await client.get("https://api.github.com/user", headers=headers)
+        if response.status_code != 200:
+            raise AuthException(
+                status_code=response.status_code,
+                detail=f"Failed to get GitHub user: {response.text}",
+            )
+        
+        return response.json()
+
+
+def create_jwt_token(username: str, installation_id: Optional[int] = None) -> str:
+    """Create a JWT token for the user."""
+    from datetime import datetime, timedelta
+    
+    payload = {
+        "sub": username,
+        "installation_id": installation_id,
+        "exp": datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+        "iat": datetime.utcnow(),
+    }
+    
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")

@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     GITHUB_APP_INSTALLATION_URL: str
     GITHUB_TEST_TOKEN: Optional[str]
 
+    # GitHub OAuth settings  
+    GITHUB_CLIENT_ID: str
+    GITHUB_CLIENT_SECRET: str
+    OAUTH_REDIRECT_URL: str
+    
     REDIRECT_URL: str
 
     GEMINI_API_KEY: str

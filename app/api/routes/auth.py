@@ -22,6 +22,9 @@ from app.core.auth import (
     generate_github_app_jwt,
     create_user_session,
     delete_session,
+    get_oauth_access_token,
+    get_github_user_oauth,
+    create_jwt_token,
 )
 from app.core.session import get_session
 from app.db.users import get_user_by_username, create_user
@@ -124,29 +127,25 @@ async def app_callback(
                 if user_response.status_code == 200:
                     user_data = user_response.json()
 
+            # Check if this is from OAuth flow (state parameter contains username)
+            username = state if state else user_data["login"]
+
             # Create or update user in database
             await create_user(
-                username=user_data["login"], 
+                username=username,
                 installation_id=installation_id,
-                github_data=user_data
+                github_data=user_data,
             )
 
             # Create user session
             session_id, session_data = await create_user_session(
-                username=user_data["login"],
+                username=username,
                 access_token=access_token,
                 installation_id=installation_id,
             )
 
             # Generate JWT token for frontend
-            payload = {
-                "sub": user_data["login"],
-                "installation_id": installation_id,
-                "exp": datetime.utcnow()
-                + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
-                "iat": datetime.utcnow(),
-            }
-            token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
+            token = create_jwt_token(username, installation_id)
 
             # Redirect to frontend with token
             redirect_url = f"{settings.REDIRECT_URL}?token={token}"
@@ -363,8 +362,101 @@ async def logout() -> Dict[str, str]:
     return {"message": "Logged out successfully. Please discard your token."}
 
 
+@router.get("/oauth/login")
+async def oauth_login() -> JSONResponse:
+    """Initiate GitHub OAuth flow for user identification."""
+    oauth_url = (
+        f"https://github.com/login/oauth/authorize?"
+        f"client_id={settings.GITHUB_CLIENT_ID}&"
+        f"redirect_uri={settings.OAUTH_REDIRECT_URL}&"
+        f"scope=user:email"
+    )
+
+    return JSONResponse(
+        {
+            "status": "oauth_redirect",
+            "oauth_url": oauth_url,
+            "message": "Redirecting to GitHub OAuth",
+        }
+    )
+
+
+@router.get("/oauth/callback")
+async def oauth_callback(
+    code: Optional[str] = Query(None),
+    error: Optional[str] = Query(None),
+) -> RedirectResponse:
+    """Handle GitHub OAuth callback and determine user flow."""
+    try:
+        if error:
+            # OAuth was denied or failed
+            redirect_url = f"{settings.REDIRECT_URL}?error={error}"
+            return RedirectResponse(url=redirect_url)
+
+        if not code:
+            redirect_url = f"{settings.REDIRECT_URL}?error=no_code"
+            return RedirectResponse(url=redirect_url)
+
+        # Exchange code for OAuth access token
+        token_data = await get_oauth_access_token(code)
+        oauth_access_token = token_data["access_token"]
+
+        # Get user info from GitHub
+        user_data = await get_github_user_oauth(oauth_access_token)
+        username = user_data["login"]
+
+        # Check if user exists in database
+        existing_user = await get_user_by_username(username)
+
+        if existing_user and existing_user.installation_id:
+            # Existing user with GitHub App installed - immediate login
+            try:
+                # Verify installation is still valid
+                await get_installation_access_token(existing_user.installation_id)
+
+                # Update user data and last login
+                await create_user(
+                    username=username,
+                    installation_id=existing_user.installation_id,
+                    github_data=user_data,
+                )
+
+                # Create JWT token
+                jwt_token = create_jwt_token(username, existing_user.installation_id)
+
+                # Redirect to frontend with token
+                redirect_url = f"{settings.REDIRECT_URL}?token={jwt_token}"
+                return RedirectResponse(url=redirect_url)
+
+            except Exception:
+                # Installation token invalid, need to reinstall
+                pass
+
+        # New user or user without GitHub App installation
+        # Store user temporarily and redirect to GitHub App installation
+        if not existing_user:
+            # Create user without installation_id
+            await create_user(
+                username=username, installation_id=None, github_data=user_data
+            )
+
+        # Redirect to GitHub App installation with username parameter
+        install_url = f"{get_github_app_install_url()}"
+        return RedirectResponse(url=install_url)
+
+    except Exception as e:
+        if isinstance(e, AuthException):
+            raise e
+        raise AuthException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"OAuth callback failed: {str(e)}",
+        )
+
+
 @router.post("/test/create-user")
-async def create_test_user(username: str, installation_id: int = 12345) -> Dict[str, Any]:
+async def create_test_user(
+    username: str, installation_id: int = 12345
+) -> Dict[str, Any]:
     """Create a test user for development/testing purposes."""
     test_github_data = {
         "login": username,
@@ -373,26 +465,25 @@ async def create_test_user(username: str, installation_id: int = 12345) -> Dict[
         "name": f"Test User {username}",
         "avatar_url": f"https://avatars.githubusercontent.com/{username}",
         "public_repos": 10,
-        "company": "Test Company"
+        "company": "Test Company",
     }
-    
+
     user = await create_user(
-        username=username, 
-        installation_id=installation_id,
-        github_data=test_github_data
+        username=username, installation_id=installation_id, github_data=test_github_data
     )
-    
+
     # Generate test JWT token
     payload = {
         "sub": username,
         "installation_id": installation_id,
-        "exp": datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+        "exp": datetime.utcnow()
+        + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
         "iat": datetime.utcnow(),
     }
     token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
-    
+
     return {
         "user": user,
         "token": token,
-        "message": f"Test user '{username}' created successfully"
+        "message": f"Test user '{username}' created successfully",
     }
