@@ -1,4 +1,4 @@
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 import os
 import base64
 import re
@@ -12,13 +12,15 @@ logger = logging.getLogger(__name__)
 class GitHubService:
     """Service for interacting with GitHub API."""
 
-    def __init__(self, access_token: str = None):
-        """Initialize GitHub service with access token.
+    def __init__(self, access_token: str = None, installation_id: int = None):
+        """Initialize GitHub service with access token or installation ID.
 
         Args:
             access_token: GitHub Personal Access Token or OAuth token
+            installation_id: GitHub App installation ID (for GitHub App operations)
         """
         self.access_token = access_token
+        self.installation_id = installation_id
         self.base_url = "https://api.github.com"
         self.headers = {
             "Accept": "application/vnd.github+json",
@@ -27,6 +29,14 @@ class GitHubService:
 
         if self.access_token:
             self.headers["Authorization"] = f"Bearer {self.access_token}"
+    
+    async def _get_installation_token(self) -> str:
+        """Get fresh installation access token for GitHub App operations."""
+        if not self.installation_id:
+            raise ValueError("Installation ID required for GitHub App operations")
+        
+        from app.core.auth import get_installation_access_token
+        return await get_installation_access_token(self.installation_id)
 
     def _parse_repo_url(self, repo_url: str) -> tuple:
         """Parse a GitHub repository URL to extract owner and repo name.
@@ -403,14 +413,25 @@ class GitHubService:
         """
         owner, repo = self._parse_repo_url(repo_url)
 
+        # For GitHub App operations, get fresh installation token
+        if self.installation_id:
+            installation_token = await self._get_installation_token()
+            headers = {
+                **self.headers,
+                "Authorization": f"token {installation_token}"
+            }
+        else:
+            headers = self.headers
+
         if branch is None:
             repo_details = await self.get_repository_details(repo_url)
-            branch = repo_details.get("default_branch")
+            branch = repo_details.get("default_branch", "main")
 
         # Check if file already exists
         try:
-            existing_file = await self._github_request(
-                f"/repos/{owner}/{repo}/contents/{file_path}?ref={branch}"
+            existing_file = await self._github_request_with_headers(
+                f"/repos/{owner}/{repo}/contents/{file_path}?ref={branch}",
+                headers=headers
             )
             file_sha = existing_file.get("sha")
         except ValueError:
@@ -427,8 +448,169 @@ class GitHubService:
             data["sha"] = file_sha
 
         # Upload the file
-        response = await self._github_request(
-            f"/repos/{owner}/{repo}/contents/{file_path}", method="PUT", data=data
+        response = await self._github_request_with_headers(
+            f"/repos/{owner}/{repo}/contents/{file_path}", 
+            method="PUT", 
+            data=data,
+            headers=headers
         )
 
         return response
+    
+    async def get_repository_branches(self, repo_url: str) -> List[Dict[str, Any]]:
+        """Get all branches from a GitHub repository.
+
+        Args:
+            repo_url: GitHub repository URL
+
+        Returns:
+            List of branch information
+        """
+        owner, repo = self._parse_repo_url(repo_url)
+
+        # For GitHub App operations, get fresh installation token
+        if self.installation_id:
+            installation_token = await self._get_installation_token()
+            headers = {
+                **self.headers,
+                "Authorization": f"token {installation_token}"
+            }
+        else:
+            headers = self.headers
+
+        try:
+            branches_data = await self._github_request_with_headers(
+                f"/repos/{owner}/{repo}/branches",
+                headers=headers
+            )
+            
+            # Format branch data for frontend
+            branches = []
+            for branch in branches_data:
+                branches.append({
+                    "name": branch["name"],
+                    "sha": branch["commit"]["sha"],
+                    "protected": branch.get("protected", False),
+                    "is_default": False  # We'll set this separately
+                })
+            
+            # Get default branch info
+            repo_details = await self.get_repository_details(repo_url)
+            default_branch = repo_details.get("default_branch", "main")
+            
+            # Mark the default branch
+            for branch in branches:
+                if branch["name"] == default_branch:
+                    branch["is_default"] = True
+                    break
+            
+            # Sort branches: default first, then alphabetically
+            branches.sort(key=lambda x: (not x["is_default"], x["name"]))
+            
+            return branches
+            
+        except ValueError as e:
+            logger.error(f"Error getting repository branches: {str(e)}")
+            # Return default branch as fallback
+            repo_details = await self.get_repository_details(repo_url)
+            return [{
+                "name": repo_details.get("default_branch", "main"),
+                "sha": "",
+                "protected": False,
+                "is_default": True
+            }]
+
+    async def create_branch(self, repo_url: str, branch_name: str, source_branch: str = None) -> Dict[str, Any]:
+        """Create a new branch in the repository.
+
+        Args:
+            repo_url: GitHub repository URL
+            branch_name: Name of the new branch
+            source_branch: Branch to create from (if None, uses default branch)
+
+        Returns:
+            Response from GitHub API
+        """
+        owner, repo = self._parse_repo_url(repo_url)
+
+        # For GitHub App operations, get fresh installation token
+        if self.installation_id:
+            installation_token = await self._get_installation_token()
+            headers = {
+                **self.headers,
+                "Authorization": f"token {installation_token}"
+            }
+        else:
+            headers = self.headers
+
+        # Get source branch SHA
+        if source_branch is None:
+            repo_details = await self.get_repository_details(repo_url)
+            source_branch = repo_details.get("default_branch", "main")
+
+        try:
+            # Get source branch details
+            source_branch_data = await self._github_request_with_headers(
+                f"/repos/{owner}/{repo}/git/refs/heads/{source_branch}",
+                headers=headers
+            )
+            source_sha = source_branch_data["object"]["sha"]
+
+            # Create new branch
+            data = {
+                "ref": f"refs/heads/{branch_name}",
+                "sha": source_sha
+            }
+
+            response = await self._github_request_with_headers(
+                f"/repos/{owner}/{repo}/git/refs",
+                method="POST",
+                data=data,
+                headers=headers
+            )
+
+            return {
+                "name": branch_name,
+                "sha": response["object"]["sha"],
+                "created": True
+            }
+
+        except ValueError as e:
+            logger.error(f"Error creating branch: {str(e)}")
+            raise ValueError(f"Failed to create branch '{branch_name}': {str(e)}")
+
+    async def _github_request_with_headers(
+        self, endpoint: str, method: str = "GET", params: dict = None, data: dict = None, headers: dict = None
+    ) -> Dict:
+        """Make a request to GitHub API with custom headers.
+
+        Args:
+            endpoint: API endpoint
+            method: HTTP method
+            params: Query parameters
+            data: Request body data
+            headers: Custom headers to use
+
+        Returns:
+            Response data as dictionary
+        """
+        url = f"{self.base_url}{endpoint}"
+        request_headers = headers or self.headers
+
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.request(
+                    method, url, headers=request_headers, params=params, json=data
+                ) as response:
+                    if response.status == 404:
+                        raise ValueError(f"Resource not found: {url}")
+                    elif response.status >= 400:
+                        error_body = await response.text()
+                        raise ValueError(
+                            f"GitHub API error ({response.status}): {error_body}"
+                        )
+
+                    return await response.json()
+            except aiohttp.ClientError as e:
+                logger.error(f"GitHub API request failed: {str(e)}")
+                raise ValueError(f"GitHub API request failed: {str(e)}")

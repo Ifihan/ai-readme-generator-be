@@ -230,6 +230,76 @@ async def preview_generated_readme(
         )
 
 
+@router.get("/branches/{owner}/{repo}")
+async def get_repository_branches(
+    owner: str,
+    repo: str,
+    github_service: GitHubService = Depends(get_github_service),
+    username: str = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Get all branches from a repository for user selection."""
+    try:
+        repo_url = f"{owner}/{repo}"
+        
+        # Validate repository access
+        await validate_repository_access(github_service, repo_url)
+        
+        # Get branches
+        branches = await github_service.get_repository_branches(repo_url)
+        
+        return {
+            "repository": f"{owner}/{repo}",
+            "branches": branches,
+            "total_count": len(branches)
+        }
+        
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        if isinstance(e, GitHubException):
+            raise e
+        raise GitHubException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get repository branches: {str(e)}",
+        )
+
+
+@router.post("/branches/{owner}/{repo}")
+async def create_repository_branch(
+    owner: str,
+    repo: str,
+    branch_name: str,
+    source_branch: Optional[str] = None,
+    github_service: GitHubService = Depends(get_github_service),
+    username: str = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Create a new branch in the repository."""
+    try:
+        repo_url = f"{owner}/{repo}"
+        
+        # Validate repository access
+        await validate_repository_access(github_service, repo_url)
+        
+        # Create branch
+        result = await github_service.create_branch(repo_url, branch_name, source_branch)
+        
+        return {
+            "message": f"Branch '{branch_name}' created successfully",
+            "branch": result,
+            "repository": f"{owner}/{repo}"
+        }
+        
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        if isinstance(e, GitHubException):
+            raise e
+        raise GitHubException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create branch: {str(e)}",
+        )
+
+
 @router.get("/analyze/{owner}/{repo}")
 async def analyze_repository(
     owner: str,
