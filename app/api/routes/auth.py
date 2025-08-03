@@ -1,20 +1,16 @@
 import httpx
 import jwt
-import time
 
 from fastapi import (
     APIRouter,
-    Depends,
     HTTPException,
     status,
-    Response,
-    Request,
     Query,
     Header,
 )
 from fastapi.responses import JSONResponse, RedirectResponse
-from typing import Any, Dict, List, Optional, Union
-from datetime import datetime, timedelta
+from typing import Any, Dict, Optional, Union
+from datetime import datetime, timedelta, timezone
 
 from app.core.auth import (
     get_github_app_install_url,
@@ -26,7 +22,6 @@ from app.core.auth import (
     get_github_user_oauth,
     create_jwt_token,
 )
-from app.core.session import get_session
 from app.db.users import get_user_by_username, create_user
 from app.config import settings
 from app.exceptions import AuthException
@@ -38,7 +33,7 @@ router = APIRouter(prefix="/auth")
 async def login(
     authorization: str = Header(None),
 ) -> Union[JSONResponse, RedirectResponse]:
-    """Handle login logic - redirect to GitHub App installation for authentication."""
+    """Handle login logic - start OAuth for user identification, then GitHub App if needed."""
 
     # If authorization header is provided, check if user is already logged in
     if authorization and authorization.startswith("Bearer "):
@@ -51,27 +46,39 @@ async def login(
             # Check if user exists and has valid installation
             user = await get_user_by_username(username)
             if user and installation_id:
-                # User is already authenticated with valid installation
-                return JSONResponse(
-                    {
-                        "status": "authenticated",
-                        "username": username,
-                        "installation_id": installation_id,
-                        "token": token,
-                    }
-                )
+                # Verify installation is still valid
+                try:
+                    await get_installation_access_token(installation_id)
+                    # User is already authenticated with valid installation
+                    return JSONResponse(
+                        {
+                            "status": "authenticated",
+                            "username": username,
+                            "installation_id": installation_id,
+                            "token": token,
+                        }
+                    )
+                except Exception:
+                    # Installation token invalid, continue to OAuth flow
+                    pass
         except (jwt.PyJWTError, Exception):
-            # Token is invalid or expired, continue to installation flow
+            # Token is invalid or expired, continue to OAuth flow
             pass
 
-    # For new users or users needing to authenticate, redirect to GitHub App installation
-    # GitHub will handle both new installations and existing app approvals
-    install_url = get_github_app_install_url()
+    # For login, always start with OAuth to identify the user
+    # This ensures we get proper user data and can determine next steps
+    oauth_url = (
+        f"https://github.com/login/oauth/authorize?"
+        f"client_id={settings.GITHUB_CLIENT_ID}&"
+        f"redirect_uri={settings.OAUTH_REDIRECT_URL}&"
+        f"scope=user:email"
+    )
+    
     return JSONResponse(
         {
-            "status": "needs_installation",
-            "install_url": install_url,
-            "message": "Please install or authorize the GitHub App to continue",
+            "status": "oauth_redirect",
+            "oauth_url": oauth_url,
+            "message": "Redirecting to GitHub OAuth for user identification",
         }
     )
 
@@ -79,9 +86,7 @@ async def login(
 @router.get("/callback")
 async def app_callback(
     installation_id: Optional[int] = Query(None),
-    code: Optional[str] = Query(None),
     state: Optional[str] = Query(None),
-    setup_action: Optional[str] = Query(None),
 ) -> RedirectResponse:
     """Handle the callback after GitHub App installation.
 
@@ -127,18 +132,34 @@ async def app_callback(
                 if user_response.status_code == 200:
                     user_data = user_response.json()
 
-            # Check if this is from OAuth flow (state parameter contains username)
-            username = state if state else user_data["login"]
+            # Get username from installation data
+            username = user_data["login"]
 
-            # Create or update user in database
+            # Get existing user data if user exists (to preserve OAuth-collected data)
+            existing_user = await get_user_by_username(username)
+            
+            # Merge GitHub data - prioritize OAuth data over installation data
+            merged_github_data = user_data.copy()
+            if existing_user:
+                # If we have OAuth data from earlier, preserve it
+                for field in ["email", "name", "avatar_url", "id", "public_repos", "company"]:
+                    if existing_user.get(field.replace("name", "full_name") if field == "name" else field):
+                        if field == "name":
+                            merged_github_data["name"] = existing_user.get("full_name")
+                        elif field == "id":
+                            merged_github_data["id"] = existing_user.get("github_id")
+                        else:
+                            merged_github_data[field] = existing_user.get(field)
+
+            # Create or update user in database with installation_id
             await create_user(
                 username=username,
                 installation_id=installation_id,
-                github_data=user_data,
+                github_data=merged_github_data,
             )
 
-            # Create user session
-            session_id, session_data = await create_user_session(
+            # Create user session with installation access token
+            await create_user_session(
                 username=username,
                 access_token=access_token,
                 installation_id=installation_id,
@@ -196,7 +217,6 @@ async def get_repositories(
         # Verify the token
         try:
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
-            username = payload["sub"]
             installation_id = payload.get("installation_id")
         except jwt.PyJWTError:
             raise HTTPException(
@@ -323,7 +343,7 @@ async def refresh_token(
 
             # Check if token is too old to refresh (e.g., more than 30 days)
             iat = payload.get("iat", 0)
-            now = datetime.utcnow().timestamp()
+            now = datetime.now(timezone.utc).timestamp()
             if iat and (now - iat > 60 * 60 * 24 * 30):  # 30 days
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -334,9 +354,9 @@ async def refresh_token(
             new_payload = {
                 "sub": payload["sub"],
                 "installation_id": payload.get("installation_id"),
-                "exp": datetime.utcnow()
+                "exp": datetime.now(timezone.utc)
                 + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
-                "iat": datetime.utcnow(),
+                "iat": datetime.now(timezone.utc),
             }
 
             new_token = jwt.encode(new_payload, settings.SECRET_KEY, algorithm="HS256")
@@ -381,6 +401,70 @@ async def oauth_login() -> JSONResponse:
     )
 
 
+@router.get("/status/{username}")
+async def get_user_status(username: str) -> JSONResponse:
+    """Check the onboarding/authentication status of a user."""
+    try:
+        user = await get_user_by_username(username)
+        
+        if not user:
+            return JSONResponse(
+                {
+                    "status": "not_found",
+                    "message": "User does not exist",
+                    "next_step": "signup",
+                }
+            )
+        
+        # Check if user has GitHub data
+        has_github_data = bool(user.get("email") or user.get("full_name") or user.get("avatar_url"))
+        
+        if user.get("installation_id"):
+            # User has completed onboarding
+            try:
+                # Verify installation is still valid
+                await get_installation_access_token(user["installation_id"])
+                return JSONResponse(
+                    {
+                        "status": "complete",
+                        "message": "User fully authenticated",
+                        "next_step": "login",
+                        "has_github_data": has_github_data,
+                    }
+                )
+            except Exception:
+                # Installation invalid, needs reinstall
+                return JSONResponse(
+                    {
+                        "status": "installation_invalid",
+                        "message": "GitHub App installation is invalid",
+                        "next_step": "github_app_install",
+                        "has_github_data": has_github_data,
+                    }
+                )
+        else:
+            # User exists but no GitHub App installation
+            return JSONResponse(
+                {
+                    "status": "incomplete",
+                    "message": "User needs to install GitHub App",
+                    "next_step": "github_app_install",
+                    "has_github_data": has_github_data,
+                    "install_url": get_github_app_install_url(),
+                }
+            )
+            
+    except Exception as e:
+        return JSONResponse(
+            {
+                "status": "error",
+                "message": f"Error checking user status: {str(e)}",
+                "next_step": "signup",
+            },
+            status_code=500,
+        )
+
+
 @router.get("/oauth/callback")
 async def oauth_callback(
     code: Optional[str] = Query(None),
@@ -408,40 +492,60 @@ async def oauth_callback(
         # Check if user exists in database
         existing_user = await get_user_by_username(username)
 
-        if existing_user and existing_user.installation_id:
-            # Existing user with GitHub App installed - immediate login
+        if existing_user and existing_user.get("installation_id"):
+            # Existing user with GitHub App installed - verify and login
             try:
                 # Verify installation is still valid
-                await get_installation_access_token(existing_user.installation_id)
+                await get_installation_access_token(existing_user["installation_id"])
 
                 # Update user data and last login
                 await create_user(
                     username=username,
-                    installation_id=existing_user.installation_id,
+                    installation_id=existing_user["installation_id"],
                     github_data=user_data,
                 )
 
-                # Create JWT token
-                jwt_token = create_jwt_token(username, existing_user.installation_id)
+                # Get installation access token for session
+                installation_access_token = await get_installation_access_token(existing_user["installation_id"])
+                
+                # Create user session with installation access token
+                await create_user_session(
+                    username=username,
+                    access_token=installation_access_token,
+                    installation_id=existing_user["installation_id"],
+                )
 
-                # Redirect to frontend with token
+                # Create JWT token
+                jwt_token = create_jwt_token(username, existing_user["installation_id"])
+
+                # Redirect to frontend with token (successful login)
                 redirect_url = f"{settings.REDIRECT_URL}?token={jwt_token}"
                 return RedirectResponse(url=redirect_url)
 
             except Exception:
                 # Installation token invalid, need to reinstall
-                pass
+                # Update user to remove invalid installation_id
+                await create_user(
+                    username=username, installation_id=None, github_data=user_data
+                )
 
-        # New user or user without GitHub App installation
-        # Store user temporarily and redirect to GitHub App installation
-        if not existing_user:
-            # Create user without installation_id
+        elif existing_user and not existing_user.get("installation_id"):
+            # Existing user with incomplete onboarding - update data and redirect to GitHub App
             await create_user(
                 username=username, installation_id=None, github_data=user_data
             )
 
-        # Redirect to GitHub App installation with username parameter
-        install_url = f"{get_github_app_install_url()}"
+        else:
+            # New user - create with GitHub data but no installation_id
+            await create_user(
+                username=username, installation_id=None, github_data=user_data
+            )
+
+        # New user or user without GitHub App installation
+        # Redirect to GitHub App installation
+        # Note: GitHub App installations don't support custom state parameters
+        # The username will be identified from the installation account info
+        install_url = get_github_app_install_url()
         return RedirectResponse(url=install_url)
 
     except Exception as e:
@@ -476,9 +580,9 @@ async def create_test_user(
     payload = {
         "sub": username,
         "installation_id": installation_id,
-        "exp": datetime.utcnow()
+        "exp": datetime.now(timezone.utc)
         + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
-        "iat": datetime.utcnow(),
+        "iat": datetime.now(timezone.utc),
     }
     token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
 
@@ -504,7 +608,6 @@ async def get_installation_settings(
 
         token = authorization.split(" ")[1]
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
-        username = payload["sub"]
         installation_id = payload.get("installation_id")
 
         if not installation_id:
@@ -597,7 +700,7 @@ async def reinstall_github_app(
             )
 
         token = authorization.split(" ")[1]
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
         
         install_url = get_github_app_install_url()
         
