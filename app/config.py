@@ -26,7 +26,9 @@ class Settings(BaseSettings):
     GITHUB_APP_ID: str
     GITHUB_APP_PRIVATE_KEY: str
     GITHUB_APP_INSTALLATION_URL: str
+    GITHUB_WEBHOOK_SECRET: str
     GITHUB_TEST_TOKEN: Optional[str]
+    WEBHOOK_URL: str
 
     # GitHub OAuth settings  
     GITHUB_CLIENT_ID: str

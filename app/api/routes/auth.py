@@ -234,21 +234,40 @@ async def get_repositories(
         # Get an installation token for GitHub API access
         token = await get_installation_access_token(installation_id)
 
-        url = "https://api.github.com/installation/repositories"
         headers = {
             "Authorization": f"token {token}",
             "Accept": "application/vnd.github.v3+json",
         }
 
         async with httpx.AsyncClient() as client:
-            response = await client.get(url, headers=headers)
-            if response.status_code != 200:
-                raise AuthException(
-                    status_code=response.status_code,
-                    detail=f"Failed to get repositories: {response.text}",
-                )
+            # Handle pagination to get all repositories
+            all_repositories = []
+            page = 1
+            per_page = 100  # Maximum allowed by GitHub API
+            
+            while True:
+                url = f"https://api.github.com/installation/repositories?per_page={per_page}&page={page}"
+                response = await client.get(url, headers=headers)
+                
+                if response.status_code != 200:
+                    raise AuthException(
+                        status_code=response.status_code,
+                        detail=f"Failed to get repositories: {response.text}",
+                    )
 
-            data = response.json()
+                data = response.json()
+                repositories = data.get("repositories", [])
+                
+                if not repositories:
+                    # No more repositories to fetch
+                    break
+                    
+                all_repositories.extend(repositories)
+                page += 1
+                
+                # If we got less than per_page, we've reached the end
+                if len(repositories) < per_page:
+                    break
 
             # Simplify the repository data
             simplified_repos = [
@@ -260,12 +279,12 @@ async def get_repositories(
                     "description": repo["description"],
                     "private": repo["private"],
                 }
-                for repo in data["repositories"]
+                for repo in all_repositories
             ]
 
             return {
                 "repositories": simplified_repos,
-                "total_count": data["total_count"],
+                "total_count": len(all_repositories),
             }
     except Exception as e:
         if isinstance(e, HTTPException):

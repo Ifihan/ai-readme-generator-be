@@ -75,31 +75,55 @@ async def check_installation_repo_access(
         
         async with httpx.AsyncClient() as client:
 
-            # Check the list of repositories for this installation
-            install_response = await client.get(
-                "https://api.github.com/installation/repositories",
-                headers=headers,
-                timeout=10.0,
-            )
-
-            if install_response.status_code == 200:
+            # Check the list of repositories for this installation (handle pagination)
+            all_repositories = []
+            page = 1
+            per_page = 100  # Maximum allowed by GitHub API
+            
+            while True:
+                install_response = await client.get(
+                    f"https://api.github.com/installation/repositories?per_page={per_page}&page={page}",
+                    headers=headers,
+                    timeout=10.0,
+                )
+                
+                if install_response.status_code != 200:
+                    print(f"DEBUG: Failed to get installation repos (page {page}): {install_response.status_code}, {install_response.text}")
+                    break
+                
                 data = install_response.json()
-                print(f"DEBUG: Installation has access to {len(data.get('repositories', []))} repositories")
+                repositories = data.get("repositories", [])
                 
-                # Log all accessible repositories for debugging
-                for repo_data in data.get("repositories", []):
-                    print(f"DEBUG: Accessible repo: {repo_data.get('full_name')} (permissions: {repo_data.get('permissions', {})})")
+                if not repositories:
+                    # No more repositories to fetch
+                    break
+                    
+                all_repositories.extend(repositories)
+                page += 1
                 
-                # Check if the repository is in the list
-                repo_full_name = f"{owner}/{repo}"
-                for repository in data.get("repositories", []):
-                    if repository.get("full_name") == repo_full_name:
-                        print(f"DEBUG: Found target repo {repo_full_name} in installation")
-                        
-                        # For installation tokens, if the repo is in the list, we have access
-                        # The installation token permissions we saw earlier confirm we have 'contents': 'write'
-                        logger.info(f"Installation repo access confirmed for: {repo_full_name}")
-                        return True
+                # If we got less than per_page, we've reached the end
+                if len(repositories) < per_page:
+                    break
+            
+            print(f"DEBUG: Installation has access to {len(all_repositories)} repositories total")
+            
+            # Log all accessible repositories for debugging (first 10 only to avoid spam)
+            for i, repo_data in enumerate(all_repositories[:10]):
+                print(f"DEBUG: Accessible repo {i+1}: {repo_data.get('full_name')} (permissions: {repo_data.get('permissions', {})})")
+            
+            if len(all_repositories) > 10:
+                print(f"DEBUG: ... and {len(all_repositories) - 10} more repositories")
+            
+            # Check if the repository is in the list
+            repo_full_name = f"{owner}/{repo}"
+            for repository in all_repositories:
+                if repository.get("full_name") == repo_full_name:
+                    print(f"DEBUG: Found target repo {repo_full_name} in installation")
+                    
+                    # For installation tokens, if the repo is in the list, we have access
+                    # The installation token permissions we saw earlier confirm we have 'contents': 'write'
+                    logger.info(f"Installation repo access confirmed for: {repo_full_name}")
+                    return True
 
                 print(f"DEBUG: Repository {repo_full_name} NOT found in installation repositories list")
                 logger.warning(
