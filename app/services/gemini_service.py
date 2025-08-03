@@ -26,11 +26,7 @@ class GeminiService:
     """Service for interacting with Google's Gemini API through LangChain."""
 
     def __init__(self, api_key: str = None):
-        """Initialize the Gemini service with API key.
-
-        Args:
-            api_key: Google API key for Gemini
-        """
+        """Initialize the Gemini service with API key."""
         self.api_key = settings.GEMINI_API_KEY
         if not self.api_key:
             raise ValueError("Google API Key is required for Gemini Service")
@@ -49,14 +45,7 @@ class GeminiService:
         )
 
     def _create_llm(self, max_tokens: int) -> ChatGoogleGenerativeAI:
-        """Create a Gemini LLM instance with specified token limit.
-
-        Args:
-            max_tokens: Maximum output tokens
-
-        Returns:
-            Configured Gemini model
-        """
+        """Create a Gemini LLM instance with specified token limit."""
         return ChatGoogleGenerativeAI(
             model=settings.GEMINI_MODEL,
             google_api_key=self.api_key,
@@ -67,15 +56,7 @@ class GeminiService:
     def _create_readme_prompt(
         self, repo_info: Dict[str, Any], sections: List[ReadmeSection]
     ) -> str:
-        """Create a prompt for README generation based on repository information and requested sections.
-
-        Args:
-            repo_info: Repository information dictionary
-            sections: List of README sections to generate
-
-        Returns:
-            Formatted prompt string
-        """
+        """Create a prompt for README generation based on repository information and requested sections."""
         # Format sections for the prompt
         section_descriptions = "\n".join(
             [f"- {section.name}: {section.description}" for section in sections]
@@ -137,15 +118,7 @@ class GeminiService:
     async def generate_readme(
         self, request: ReadmeGenerationRequest, github_service: GitHubService
     ) -> str:
-        """Generate a README for a GitHub repository with automatic fallback handling.
-
-        Args:
-            request: The README generation request containing repository and section info
-            github_service: GitHub service instance to fetch repository details
-
-        Returns:
-            Generated README content in Markdown format
-        """
+        """Generate a README for a GitHub repository with automatic fallback handling."""
         # Get repository information
         repo_info = await github_service.get_repository_details(request.repository_url)
 
@@ -202,15 +175,7 @@ class GeminiService:
     async def _generate_readme_full(
         self, repo_info: Dict[str, Any], sections: List[ReadmeSection]
     ) -> str:
-        """Generate a complete README in one call.
-
-        Args:
-            repo_info: Repository information dictionary
-            sections: List of README sections to generate
-
-        Returns:
-            Generated README content
-        """
+        """Generate a complete README in one call."""
         # Create prompt for README generation
         prompt = self._create_readme_prompt(repo_info, sections)
 
@@ -231,15 +196,7 @@ class GeminiService:
     async def _generate_readme_by_section(
         self, repo_info: Dict[str, Any], sections: List[ReadmeSection]
     ) -> str:
-        """Generate README content section by section.
-
-        Args:
-            repo_info: Repository information dictionary
-            sections: List of README sections to generate
-
-        Returns:
-            Combined README content
-        """
+        """Generate README content section by section."""
         # Start with the header section (title, badges, short description)
         header_prompt = f"""
         Create only the header section of a README.md for the GitHub repository: {repo_info.get('name')}
@@ -322,108 +279,10 @@ class GeminiService:
         full_content = header_content + "\n\n" + "\n\n".join(sections_content)
         return full_content
 
-    # async def _generate_readme_by_section(
-    #     self, repo_info: Dict[str, Any], sections: List[ReadmeSection]
-    # ) -> str:
-    #     """Generate README content section by section.
-
-    #     Args:
-    #         repo_info: Repository information dictionary
-    #         sections: List of README sections to generate
-
-    #     Returns:
-    #         Combined README content
-    #     """
-    #     # Start with the header section (title, badges, short description)
-    #     header_prompt = f"""
-    #     Create only the header section of a README.md for the GitHub repository: {repo_info.get('name')}
-
-    #     Repository Information:
-    #     - Name: {repo_info.get('name', 'Unknown')}
-    #     - Description: {repo_info.get('description', 'No description provided')}
-    #     - Primary Language: {repo_info.get('language', 'Not specified')}
-
-    #     Include:
-    #     1. A title (H1 heading with the repository name)
-    #     2. A brief one-paragraph description of what the project does
-    #     3. Appropriate badges if needed (build status, version, license, etc.)
-
-    #     Format the output as Markdown. ONLY include the header section, no other sections.
-    #     """
-
-    #     header_prompt_template = ChatPromptTemplate.from_template(header_prompt)
-    #     header_chain = header_prompt_template | self.llm | StrOutputParser()
-    #     header_content = await header_chain.ainvoke({})
-
-    #     # Generate each section separately
-    #     sections_content = []
-    #     for section in sorted(sections, key=lambda x: x.order):
-    #         section_prompt = f"""
-    #         Create ONLY the "{section.name}" section of a README.md for a GitHub repository.
-
-    #         Repository Information:
-    #         - Name: {repo_info.get('name', 'Unknown')}
-    #         - Description: {repo_info.get('description', 'No description provided')}
-    #         - Primary Language: {repo_info.get('language', 'Not specified')}
-    #         - Topics/Tags: {', '.join(repo_info.get('topics', ['None']))}
-
-    #         Section Details:
-    #         - Section Name: {section.name}
-    #         - Section Description: {section.description}
-
-    #         Additional Context:
-    #         """
-
-    #         # Add relevant context based on section type
-    #         if section.name.lower() in [
-    #             "project structure",
-    #             "file structure",
-    #             "organization",
-    #         ]:
-    #             section_prompt += f"\nFile Structure:\n{repo_info.get('file_structure', 'Not available')}\n"
-
-    #         if section.name.lower() in ["usage", "examples", "getting started"]:
-    #             sample_files = repo_info.get("code_samples", {})
-    #             section_prompt += "\nCode Samples:\n"
-    #             for file_path, content in sample_files.items():
-    #                 section_prompt += (
-    #                     f"\nFile: {file_path}\n```\n{content[:500]}...\n```\n"
-    #                 )
-
-    #         section_prompt += """
-    #         Format the output as Markdown. Start with a level-2 heading (##) for the section name.
-    #         ONLY include this specific section, do not include any other sections.
-    #         """
-
-    #         section_prompt_template = ChatPromptTemplate.from_template(section_prompt)
-    #         section_chain = section_prompt_template | self.llm | StrOutputParser()
-
-    #         try:
-    #             section_content = await section_chain.ainvoke({})
-    #             sections_content.append(section_content)
-    #         except Exception as e:
-    #             logger.error(f"Error generating section {section.name}: {str(e)}")
-    #             # Add a placeholder for failed sections
-    #             sections_content.append(
-    #                 f"\n## {section.name}\n\n*Content generation failed for this section.*\n"
-    #             )
-
-    #     # Combine all sections
-    #     full_content = header_content + "\n\n" + "\n\n".join(sections_content)
-    #     return full_content
-
     def _check_for_truncation(
         self, content: str, sections: List[ReadmeSection]
     ) -> bool:
-        """Check if the generated content appears to be truncated.
-
-        Args:
-            content: Generated README content
-            sections: List of sections that should be included
-
-        Returns:
-            True if truncation is detected, False otherwise
-        """
+        """Check if the generated content appears to be truncated."""
         # Check for common truncation indicators
         truncation_indicators = [
             content.endswith("..."),
@@ -454,15 +313,7 @@ class GeminiService:
         return False
 
     async def refine_readme(self, readme_content: str, feedback: str) -> str:
-        """Refine a generated README based on user feedback with fallback mechanism.
-
-        Args:
-            readme_content: The previously generated README content
-            feedback: User feedback to incorporate
-
-        Returns:
-            Refined README content
-        """
+        """Refine a generated README based on user feedback with fallback mechanism."""
         # First attempt with default token limit
         try:
             return await self._refine_readme_standard(readme_content, feedback)
@@ -493,15 +344,7 @@ class GeminiService:
                 return await self._refine_readme_targeted(readme_content, feedback)
 
     async def _refine_readme_standard(self, readme_content: str, feedback: str) -> str:
-        """Standard approach to refine the entire README at once.
-
-        Args:
-            readme_content: The previously generated README content
-            feedback: User feedback to incorporate
-
-        Returns:
-            Refined README content
-        """
+        """Standard approach to refine the entire README at once."""
         # Escape any curly braces in the readme content that might cause f-string issues
         escaped_readme_content = readme_content.replace("{", "{{").replace("}", "}}")
 
@@ -534,15 +377,7 @@ class GeminiService:
         return refined_content
 
     async def _refine_readme_targeted(self, readme_content: str, feedback: str) -> str:
-        """Targeted approach to refine specific sections of the README.
-
-        Args:
-            readme_content: The previously generated README content
-            feedback: User feedback to incorporate
-
-        Returns:
-            Refined README content
-        """
+        """Targeted approach to refine specific sections of the README."""
         # Escape any curly braces in the readme content that might cause f-string issues
         escaped_readme_content = readme_content.replace("{", "{{").replace("}", "}}")
 
@@ -642,190 +477,7 @@ class GeminiService:
             return self._minimal_refinement(readme_content, feedback)
 
     def _split_readme_into_chunks(self, readme_content: str) -> List[str]:
-        """Split README content into manageable chunks.
-
-        Args:
-            readme_content: Full README content
-
-        Returns:
-            List of README chunks
-        """
-        # Split by top-level headings (# Heading)
-        heading_pattern = re.compile(r"^# ", re.MULTILINE)
-        split_positions = [
-            match.start() for match in heading_pattern.finditer(readme_content)
-        ]
-
-        if not split_positions:
-            # If no top-level headings, return the whole README as a single chunk
-            return [readme_content]
-
-        # Add the start position
-        if split_positions[0] > 0:
-            split_positions.insert(0, 0)
-        else:
-            split_positions[0] = 0
-
-        # Add the end position
-        split_positions.append(len(readme_content))
-
-        # Create chunks
-        chunks = []
-        for i in range(len(split_positions) - 1):
-            start = split_positions[i]
-            end = split_positions[i + 1]
-            chunk = readme_content[start:end].strip()
-            if chunk:
-                chunks.append(chunk)
-
-        return chunks
-
-    # async def _refine_readme_standard(self, readme_content: str, feedback: str) -> str:
-    #     """Standard approach to refine the entire README at once.
-
-    #     Args:
-    #         readme_content: The previously generated README content
-    #         feedback: User feedback to incorporate
-
-    #     Returns:
-    #         Refined README content
-    #     """
-    #     prompt = f"""
-    #     You are an expert technical writer specializing in improving README documentation.
-
-    #     Below is a README.md file that needs to be refined based on user feedback:
-
-    #     ```markdown
-    #     {readme_content}
-    #     ```
-
-    #     User feedback:
-    #     {feedback}
-
-    #     Please revise the README to address this feedback while maintaining professional quality, proper Markdown formatting, and comprehensive coverage of the project.
-
-    #     Respond with ONLY the revised README.md content in Markdown format, without any additional explanation or conversation.
-    #     """
-
-    #     prompt_template = ChatPromptTemplate.from_template(prompt)
-    #     chain = prompt_template | self.llm | StrOutputParser()
-
-    #     refined_content = await chain.ainvoke({})
-
-    #     # Check for truncation
-    #     if refined_content.endswith("...") or refined_content.endswith("…"):
-    #         raise ValueError("Refinement appears to be truncated")
-
-    #     return refined_content
-
-    # async def _refine_readme_targeted(self, readme_content: str, feedback: str) -> str:
-    #     """Targeted approach to refine specific sections of the README.
-
-    #     Args:
-    #         readme_content: The previously generated README content
-    #         feedback: User feedback to incorporate
-
-    #     Returns:
-    #         Refined README content
-    #     """
-    #     # First, analyze the feedback to identify which sections need refinement
-    #     analyze_prompt = f"""
-    #     Analyze the following feedback for a README.md file and identify which specific sections need to be refined.
-
-    #     README feedback:
-    #     {feedback}
-
-    #     Respond with ONLY a comma-separated list of section names that need to be refined.
-    #     If the feedback is general or applies to the entire document, respond with "ALL".
-    #     Do not include any other text in your response.
-    #     """
-
-    #     analyze_template = ChatPromptTemplate.from_template(analyze_prompt)
-    #     analyze_chain = analyze_template | self.llm | StrOutputParser()
-
-    #     try:
-    #         sections_to_refine = await analyze_chain.ainvoke({}).strip()
-
-    #         if sections_to_refine.upper() == "ALL":
-    #             # If feedback applies to everything, try a different approach
-    #             # Split the README into chunks and refine each chunk
-    #             chunks = self._split_readme_into_chunks(readme_content)
-    #             refined_chunks = []
-
-    #             for chunk in chunks:
-    #                 refine_chunk_prompt = f"""
-    #                 Refine the following portion of a README.md file based on this feedback:
-
-    #                 Feedback: {feedback}
-
-    #                 README portion:
-    #                 ```markdown
-    #                 {chunk}
-    #                 ```
-
-    #                 Respond with ONLY the refined portion in Markdown format.
-    #                 Maintain all section headings and structure exactly as they appear.
-    #                 """
-
-    #                 chunk_template = ChatPromptTemplate.from_template(
-    #                     refine_chunk_prompt
-    #                 )
-    #                 chunk_chain = chunk_template | self.llm | StrOutputParser()
-
-    #                 refined_chunk = await chunk_chain.ainvoke({})
-    #                 refined_chunks.append(refined_chunk)
-
-    #             return "\n\n".join(refined_chunks)
-    #         else:
-    #             # Extract the sections to refine
-    #             section_names = [name.strip() for name in sections_to_refine.split(",")]
-
-    #             # Extract sections from the README
-    #             sections = extract_sections_from_markdown(readme_content)
-
-    #             # Refine each identified section
-    #             for section_name in section_names:
-    #                 if section_name in sections:
-    #                     section_content = sections[section_name]
-
-    #                     refine_section_prompt = f"""
-    #                     Refine the following section of a README.md file based on this feedback:
-
-    #                     Feedback: {feedback}
-
-    #                     Section: {section_name}
-    #                     ```markdown
-    #                     {section_content}
-    #                     ```
-
-    #                     Respond with ONLY the refined section in Markdown format.
-    #                     Maintain the section heading exactly as it appears.
-    #                     """
-
-    #                     section_template = ChatPromptTemplate.from_template(
-    #                         refine_section_prompt
-    #                     )
-    #                     section_chain = section_template | self.llm | StrOutputParser()
-
-    #                     refined_section = await section_chain.ainvoke({})
-    #                     sections[section_name] = refined_section
-
-    #             # Reconstruct the README
-    #             return merge_markdown_sections(sections)
-    #     except Exception as e:
-    #         logger.error(f"Error in targeted refinement: {str(e)}")
-    #         # Fallback to minimal refinement
-    #         return self._minimal_refinement(readme_content, feedback)
-
-    def _split_readme_into_chunks(self, readme_content: str) -> List[str]:
-        """Split README content into manageable chunks.
-
-        Args:
-            readme_content: Full README content
-
-        Returns:
-            List of README chunks
-        """
+        """Split README content into manageable chunks."""
         # Split by top-level headings (# Heading)
         heading_pattern = re.compile(r"^# ", re.MULTILINE)
         split_positions = [
@@ -857,22 +509,14 @@ class GeminiService:
         return chunks
 
     def _minimal_refinement(self, readme_content: str, feedback: str) -> str:
-        """Perform minimal refinement as a final fallback.
-
-        Args:
-            readme_content: Original README content
-            feedback: User feedback
-
-        Returns:
-            Minimally refined README content
-        """
+        """Perform minimal refinement as a final fallback."""
         # Add a note about the feedback at the top of the README
         note = f"""<!-- 
-Feedback received: 
-{feedback}
+        Feedback received: 
+        {feedback}
 
-This README requires further refinement based on the feedback above.
--->"""
+        This README requires further refinement based on the feedback above.
+        -->"""
 
         return note + "\n\n" + readme_content
 
@@ -882,17 +526,7 @@ This README requires further refinement based on the feedback above.
         repo_files: List[Dict[str, Any]],
         key_files_content: Dict[str, str],
     ) -> Dict[str, Any]:
-        """
-        Analyze a repository to determine the best README structure.
-
-        Args:
-            repo_info: Repository information
-            repo_files: List of file information
-            key_files_content: Content of key files
-
-        Returns:
-            Dictionary with analysis results
-        """
+        """Analyze a repository to determine the best README structure."""
         try:
             # Create context for the analysis prompt
             file_structure = self._format_file_structure(repo_files)

@@ -1,12 +1,15 @@
 from fastapi import Depends, Header, HTTPException, status
 import jwt
 from typing import Dict, Any
+import logging
 
 from app.config import settings
 from app.core.auth import get_installation_access_token
 from app.db.users import get_user_by_username
 from app.services.github_service import GitHubService
 from app.services.gemini_service import GeminiService
+
+logger = logging.getLogger(__name__)
 
 
 async def verify_auth_header(authorization: str = Header(...)) -> Dict[str, Any]:
@@ -18,16 +21,11 @@ async def verify_auth_header(authorization: str = Header(...)) -> Dict[str, Any]
         )
 
     token = authorization.split(" ")[1]
-    
-    print(f"DEBUG: Received token: {token[:50]}...")
-    print(f"DEBUG: Using SECRET_KEY: {settings.SECRET_KEY[:10]}...")
 
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
-        print(f"DEBUG: Token decoded successfully. Payload keys: {list(payload.keys())}")
         return payload
     except jwt.PyJWTError as e:
-        print(f"DEBUG: JWT decode failed: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"JWT decode failed: {str(e)}. Please get a new token by logging in again.",
@@ -86,7 +84,6 @@ async def get_github_service(
     """Get GitHub service with access token from token payload."""
 
     installation_id = payload.get("installation_id")
-    print(f"DEBUG: installation_id from token: {installation_id}")
     
     if not installation_id:
         raise HTTPException(
@@ -95,12 +92,10 @@ async def get_github_service(
         )
 
     try:
-        print(f"DEBUG: Attempting to get access token for installation {installation_id}")
         access_token = await get_installation_access_token(installation_id)
-        print(f"DEBUG: Successfully got access token: {access_token[:10]}...")
         return GitHubService(access_token)
     except Exception as e:
-        print(f"DEBUG: Failed to get GitHub access token: {str(e)}")
+        logger.error(f"Failed to get GitHub access token for installation {installation_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Failed to get GitHub access token for installation {installation_id}: {str(e)}. Please login again.",

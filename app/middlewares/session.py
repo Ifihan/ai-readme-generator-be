@@ -1,5 +1,6 @@
 import asyncio
 import time
+import logging
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -8,6 +9,8 @@ from datetime import datetime
 
 from app.core.session import cleanup_expired_sessions, refresh_session, get_session
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class SessionMiddleware(BaseHTTPMiddleware):
@@ -21,7 +24,7 @@ class SessionMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.session_cookie_name = session_cookie_name
         self.last_cleanup = time.time()
-        self.cleanup_interval = 60 * 15  # 15 minutes
+        self.cleanup_interval = 60 * 15
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """Process request and refresh session if needed."""
@@ -46,7 +49,6 @@ class SessionMiddleware(BaseHTTPMiddleware):
                         samesite="lax",
                     )
 
-        # Periodically clean up expired sessions
         current_time = time.time()
         if current_time - self.last_cleanup >= self.cleanup_interval:
             asyncio.create_task(self._cleanup_sessions())
@@ -58,6 +60,6 @@ class SessionMiddleware(BaseHTTPMiddleware):
         """Cleanup expired sessions in the background."""
         try:
             removed = await cleanup_expired_sessions()
-            print(f"Session cleanup: removed {removed} expired sessions")
+            logger.info(f"Session cleanup: removed {removed} expired sessions")
         except Exception as e:
-            print(f"Error during session cleanup: {str(e)}")
+            logger.error(f"Error during session cleanup: {str(e)}")

@@ -8,16 +8,7 @@ class WebhookService:
     """Service for processing GitHub webhook events."""
     
     async def process_event(self, event_type: str, payload: Dict[str, Any]) -> bool:
-        """
-        Process a GitHub webhook event.
-        
-        Args:
-            event_type: The type of GitHub event (e.g., 'repository', 'installation')
-            payload: The webhook payload data
-            
-        Returns:
-            True if the event was processed, False if ignored
-        """
+        """Process a GitHub webhook event."""
         logger.info(f"Processing webhook event: {event_type}")
         
         if event_type == "repository":
@@ -125,8 +116,7 @@ class WebhookService:
         # - Automatically analyze the repository for README generation
         # - Store repository metadata in your database
         
-        # For now, just log the event
-        print(f"DEBUG: New repository {repo_name} is now available for README generation")
+        logger.info(f"New repository {repo_name} is now available for README generation")
     
     async def _handle_repository_deleted(self, repository: Dict[str, Any], installation_id: Optional[int]):
         """Handle when a repository is deleted."""
@@ -134,8 +124,7 @@ class WebhookService:
         
         logger.info(f"Repository deleted: {repo_name}")
         
-        # TODO: Clean up any stored data related to this repository
-        print(f"DEBUG: Repository {repo_name} has been deleted")
+        logger.info(f"Repository {repo_name} has been deleted")
     
     async def _handle_repository_renamed(self, payload: Dict[str, Any]):
         """Handle when a repository is renamed."""
@@ -147,8 +136,7 @@ class WebhookService:
         
         logger.info(f"Repository renamed from {old_name} to {new_name}")
         
-        # TODO: Update any stored references to the old repository name
-        print(f"DEBUG: Repository renamed from {old_name} to {new_name}")
+        logger.info(f"Repository renamed from {old_name} to {new_name}")
     
     async def _handle_repository_transferred(self, payload: Dict[str, Any]):
         """Handle when a repository is transferred to a new owner."""
@@ -161,8 +149,7 @@ class WebhookService:
         
         logger.info(f"Repository {repo_name} transferred from {old_owner} to {new_owner}")
         
-        # TODO: Update ownership information in your database
-        print(f"DEBUG: Repository {repo_name} transferred from {old_owner} to {new_owner}")
+        logger.info(f"Repository {repo_name} transferred from {old_owner} to {new_owner}")
     
     async def _handle_repository_visibility_changed(self, repository: Dict[str, Any], installation_id: Optional[int], action: str):
         """Handle when a repository visibility changes (public/private)."""
@@ -170,8 +157,7 @@ class WebhookService:
         
         logger.info(f"Repository {repo_name} visibility changed: {action}")
         
-        # TODO: Update repository privacy settings in your database
-        print(f"DEBUG: Repository {repo_name} is now {'private' if action == 'privatized' else 'public'}")
+        logger.info(f"Repository {repo_name} is now {'private' if action == 'privatized' else 'public'}")
     
     # Installation event handlers
     async def _handle_installation_created(self, installation: Dict[str, Any]):
@@ -186,7 +172,7 @@ class WebhookService:
         # - Set up default settings
         # - Send onboarding emails
         
-        print(f"DEBUG: New installation {installation_id} created for {account}")
+        logger.info(f"New installation {installation_id} created for {account}")
     
     async def _handle_installation_deleted(self, installation: Dict[str, Any]):
         """Handle when an installation is deleted."""
@@ -195,8 +181,7 @@ class WebhookService:
         
         logger.info(f"Installation deleted: {installation_id} for account {account}")
         
-        # TODO: Clean up user data and revoke access
-        print(f"DEBUG: Installation {installation_id} deleted for {account}")
+        logger.info(f"Installation {installation_id} deleted for {account}")
     
     async def _handle_installation_status_changed(self, installation: Dict[str, Any], action: str):
         """Handle when an installation is suspended or unsuspended."""
@@ -205,8 +190,7 @@ class WebhookService:
         
         logger.info(f"Installation {installation_id} for {account} is now {action}")
         
-        # TODO: Update user access status
-        print(f"DEBUG: Installation {installation_id} for {account} is now {action}")
+        logger.info(f"Installation {installation_id} for {account} is now {action}")
     
     # Installation repository event handlers
     async def _handle_repository_added_to_installation(self, repository: Dict[str, Any], installation_id: int):
@@ -215,8 +199,7 @@ class WebhookService:
         
         logger.info(f"Repository {repo_name} added to installation {installation_id}")
         
-        # TODO: Update your repository cache/database
-        print(f"DEBUG: Repository {repo_name} is now accessible via installation {installation_id}")
+        logger.info(f"Repository {repo_name} is now accessible via installation {installation_id}")
     
     async def _handle_repository_removed_from_installation(self, repository: Dict[str, Any], installation_id: int):
         """Handle when a repository is removed from an installation."""
@@ -224,5 +207,4 @@ class WebhookService:
         
         logger.info(f"Repository {repo_name} removed from installation {installation_id}")
         
-        # TODO: Remove repository from your cache/database
-        print(f"DEBUG: Repository {repo_name} is no longer accessible via installation {installation_id}")
+        logger.info(f"Repository {repo_name} is no longer accessible via installation {installation_id}")

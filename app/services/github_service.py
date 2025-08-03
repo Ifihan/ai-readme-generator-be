@@ -13,12 +13,7 @@ class GitHubService:
     """Service for interacting with GitHub API."""
 
     def __init__(self, access_token: str = None, installation_id: int = None):
-        """Initialize GitHub service with access token or installation ID.
-
-        Args:
-            access_token: GitHub Personal Access Token or OAuth token
-            installation_id: GitHub App installation ID (for GitHub App operations)
-        """
+        """Initialize GitHub service with access token or installation ID."""
         self.access_token = access_token
         self.installation_id = installation_id
         self.base_url = "https://api.github.com"
@@ -39,14 +34,7 @@ class GitHubService:
         return await get_installation_access_token(self.installation_id)
 
     def _parse_repo_url(self, repo_url: str) -> tuple:
-        """Parse a GitHub repository URL to extract owner and repo name.
-
-        Args:
-            repo_url: GitHub repository URL
-
-        Returns:
-            Tuple of (owner, repo_name)
-        """
+        """Parse a GitHub repository URL to extract owner and repo name."""
         # Handle different URL formats
         if "github.com" in repo_url:
             path = urlparse(repo_url).path.strip("/")
@@ -62,17 +50,7 @@ class GitHubService:
     async def _github_request(
         self, endpoint: str, method: str = "GET", params: dict = None, data: dict = None
     ) -> Dict:
-        """Make a request to GitHub API.
-
-        Args:
-            endpoint: API endpoint
-            method: HTTP method
-            params: Query parameters
-            data: Request body data
-
-        Returns:
-            Response data as dictionary
-        """
+        """Make a request to GitHub API."""
         url = f"{self.base_url}{endpoint}"
 
         async with aiohttp.ClientSession() as session:
@@ -94,14 +72,7 @@ class GitHubService:
                 raise ValueError(f"GitHub API request failed: {str(e)}")
 
     async def get_repository_details(self, repo_url: str) -> Dict[str, Any]:
-        """Get detailed information about a GitHub repository.
-
-        Args:
-            repo_url: GitHub repository URL
-
-        Returns:
-            Dictionary with repository information
-        """
+        """Get detailed information about a GitHub repository."""
         owner, repo = self._parse_repo_url(repo_url)
         repo_data = await self._github_request(f"/repos/{owner}/{repo}")
 
@@ -146,17 +117,7 @@ class GitHubService:
     async def get_repository_file_structure(
         self, repo_url: str, path: str = "", max_depth: int = 3, max_files: int = 100
     ) -> str:
-        """Get file structure of a GitHub repository with size limits.
-
-        Args:
-            repo_url: GitHub repository URL
-            path: Path within the repository
-            max_depth: Maximum directory depth to traverse
-            max_files: Maximum number of files to include
-
-        Returns:
-            Formatted string representing the file structure
-        """
+        """Get file structure of a GitHub repository with size limits."""
         owner, repo = self._parse_repo_url(repo_url)
         default_branch = (await self.get_repository_details(repo_url)).get(
             "default_branch", "main"
@@ -246,40 +207,19 @@ class GitHubService:
         return "\n".join(structure_lines)
 
     def _format_size(self, size_bytes: int) -> str:
-        """Format file size in human-readable format.
-
-        Args:
-            size_bytes: Size in bytes
-
-        Returns:
-            Formatted size string
-        """
+        """Format file size in human-readable format."""
         for unit in ["B", "KB", "MB", "GB", "TB"]:
             if size_bytes < 1024 or unit == "TB":
                 return f"{size_bytes:.2f} {unit}"
             size_bytes /= 1024
 
     async def get_optimized_repository_structure(self, repo_url: str) -> str:
-        """Get an optimized view of repository structure focusing on important files.
-
-        Args:
-            repo_url: GitHub repository URL
-
-        Returns:
-            Curated structure focused on key files
-        """
+        """Get an optimized view of repository structure focusing on important files."""
         owner, repo = self._parse_repo_url(repo_url)
         repo_details = await self.get_repository_details(repo_url)
 
     async def get_code_samples(self, repo_url: str) -> Dict[str, str]:
-        """Get representative code samples from the repository.
-
-        Args:
-            repo_url: GitHub repository URL
-
-        Returns:
-            Dictionary mapping file paths to code content
-        """
+        """Get representative code samples from the repository."""
         owner, repo = self._parse_repo_url(repo_url)
         repo_details = await self.get_repository_details(repo_url)
         primary_language = repo_details.get("language", "").lower()
@@ -399,18 +339,7 @@ class GitHubService:
         commit_message: str = "Add README.md",
         branch: str = None,
     ) -> Dict:
-        """Upload a file to a GitHub repository.
-
-        Args:
-            repo_url: GitHub repository URL
-            file_path: Path where to create/update the file
-            content: Content of the file
-            commit_message: Commit message
-            branch: Branch name (if None, uses default branch)
-
-        Returns:
-            Response from GitHub API
-        """
+        """Upload a file to a GitHub repository."""
         owner, repo = self._parse_repo_url(repo_url)
 
         # For GitHub App operations, get fresh installation token
@@ -458,14 +387,7 @@ class GitHubService:
         return response
     
     async def get_repository_branches(self, repo_url: str) -> List[Dict[str, Any]]:
-        """Get all branches from a GitHub repository.
-
-        Args:
-            repo_url: GitHub repository URL
-
-        Returns:
-            List of branch information
-        """
+        """Get all branches from a GitHub repository."""
         owner, repo = self._parse_repo_url(repo_url)
 
         # For GitHub App operations, get fresh installation token
@@ -521,16 +443,7 @@ class GitHubService:
             }]
 
     async def create_branch(self, repo_url: str, branch_name: str, source_branch: str = None) -> Dict[str, Any]:
-        """Create a new branch in the repository.
-
-        Args:
-            repo_url: GitHub repository URL
-            branch_name: Name of the new branch
-            source_branch: Branch to create from (if None, uses default branch)
-
-        Returns:
-            Response from GitHub API
-        """
+        """Create a new branch in the repository."""
         owner, repo = self._parse_repo_url(repo_url)
 
         # For GitHub App operations, get fresh installation token
@@ -582,18 +495,7 @@ class GitHubService:
     async def _github_request_with_headers(
         self, endpoint: str, method: str = "GET", params: dict = None, data: dict = None, headers: dict = None
     ) -> Dict:
-        """Make a request to GitHub API with custom headers.
-
-        Args:
-            endpoint: API endpoint
-            method: HTTP method
-            params: Query parameters
-            data: Request body data
-            headers: Custom headers to use
-
-        Returns:
-            Response data as dictionary
-        """
+        """Make a request to GitHub API with custom headers."""
         url = f"{self.base_url}{endpoint}"
         request_headers = headers or self.headers
 

@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 import base64
 from typing import Any, Dict, Optional, Tuple
+import logging
 
 from app.config import settings
 from app.schemas.auth import SessionData
@@ -16,6 +17,8 @@ from app.core.session import (
 )
 from app.db.users import create_user
 from app.exceptions import AuthException
+
+logger = logging.getLogger(__name__)
 
 
 def get_github_app_install_url() -> str:
@@ -35,7 +38,6 @@ def generate_github_app_jwt() -> str:
         "iss": settings.GITHUB_APP_ID,
     }
 
-    # Read base64-encoded PEM from environment
     private_key_b64 = settings.GITHUB_APP_PRIVATE_KEY
 
     if not private_key_b64:
@@ -46,14 +48,11 @@ def generate_github_app_jwt() -> str:
         private_key = private_key_bytes.decode("utf-8")
     except Exception as e:
         raise ValueError(f"Failed to decode PEM base64: {str(e)}")
-
-    # Now you have the real PEM key in memory
     try:
         encoded_jwt = jwt.encode(payload, private_key, algorithm="RS256")
-        print(f"DEBUG: JWT generated successfully for app {settings.GITHUB_APP_ID}")
         return encoded_jwt
     except Exception as e:
-        print(f"DEBUG: JWT encoding error: {str(e)}")
+        logger.error(f"JWT encoding error: {str(e)}")
         raise
 
 
@@ -70,14 +69,12 @@ async def get_installation_access_token(installation_id: int) -> str:
     async with httpx.AsyncClient() as client:
         response = await client.post(url, headers=headers)
         if response.status_code != 201:
-            print(f"DEBUG: Failed to get installation token: {response.status_code}, {response.text}")
             raise AuthException(
                 status_code=response.status_code,
                 detail=f"Failed to get installation token: {response.text}",
             )
 
         data = response.json()
-        print(f"DEBUG: Installation token response: {data}")
         return data["token"]
 
 
@@ -112,7 +109,6 @@ async def get_user_from_token(access_token: str) -> Dict[str, Any]:
     async with httpx.AsyncClient() as client:
         response = await client.get("https://api.github.com/user", headers=headers)
         if response.status_code != 200:
-            # If we can't get user data, we'll rely on installation data
             return None
 
         return response.json()
@@ -122,15 +118,12 @@ async def create_user_session(
     username: str, access_token: str, installation_id: Optional[int] = None
 ) -> Tuple[str, SessionData]:
     """Create a session for the user, replacing any existing session."""
-    # Update or create user in database
     await create_user(username=username, installation_id=installation_id)
 
-    # Handle existing session
     existing_session_id = await find_session_by_username(username)
     if existing_session_id:
         await delete_session(existing_session_id)
 
-    # Create a new session
     session_id = secrets.token_urlsafe(32)
     await create_session(
         username=username,
