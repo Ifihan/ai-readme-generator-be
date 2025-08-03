@@ -50,9 +50,10 @@ def generate_github_app_jwt() -> str:
     # Now you have the real PEM key in memory
     try:
         encoded_jwt = jwt.encode(payload, private_key, algorithm="RS256")
+        print(f"DEBUG: JWT generated successfully for app {settings.GITHUB_APP_ID}")
         return encoded_jwt
     except Exception as e:
-        print(f"JWT encoding error: {str(e)}")
+        print(f"DEBUG: JWT encoding error: {str(e)}")
         raise
 
 
@@ -69,12 +70,14 @@ async def get_installation_access_token(installation_id: int) -> str:
     async with httpx.AsyncClient() as client:
         response = await client.post(url, headers=headers)
         if response.status_code != 201:
+            print(f"DEBUG: Failed to get installation token: {response.status_code}, {response.text}")
             raise AuthException(
                 status_code=response.status_code,
                 detail=f"Failed to get installation token: {response.text}",
             )
 
         data = response.json()
+        print(f"DEBUG: Installation token response: {data}")
         return data["token"]
 
 

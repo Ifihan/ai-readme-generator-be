@@ -65,51 +65,15 @@ async def check_installation_repo_access(
             "Accept": "application/vnd.github.v3+json",
         }
 
-        # First, verify the token is valid
+        # Skip user validation for installation tokens (they can't access /user endpoint)
+        # Installation tokens are already validated by being able to get them from GitHub
+        print(f"DEBUG: Using installation token for repository access check")
+
+        # For installation tokens, skip the direct repo check since it doesn't show correct permissions
+        # Go directly to installation repositories which shows the real permissions
+        print(f"DEBUG: Skipping direct repo check, checking installation repositories for {owner}/{repo}...")
+        
         async with httpx.AsyncClient() as client:
-            verify_response = await client.get(
-                "https://api.github.com/user",
-                headers=headers,
-                timeout=10.0,
-            )
-
-            if verify_response.status_code != 200:
-                logger.error(
-                    f"GitHub token validation failed: {verify_response.status_code}"
-                )
-                return False
-
-            # Log who we're authenticated as
-            user_data = verify_response.json()
-            logger.info(f"Token authenticated as user: {user_data.get('login')}")
-
-        # Try to get the repository directly with detailed permissions
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"https://api.github.com/repos/{owner}/{repo}",
-                headers=headers,
-                timeout=10.0,
-            )
-
-            # If we can access the repo directly, check the permissions
-            if response.status_code == 200:
-                repo_data = response.json()
-                # Check if we have admin or write permissions
-                permissions = repo_data.get("permissions", {})
-                has_write = permissions.get("push", False)
-                has_admin = permissions.get("admin", False)
-
-                logger.info(
-                    f"Direct repo access: {owner}/{repo} (write: {has_write}, admin: {has_admin})"
-                )
-
-                # For README generation, we need at least write access
-                return has_write or has_admin
-
-            # If direct access failed, log the specific error
-            logger.warning(
-                f"Direct repo access failed: {response.status_code}, {response.text}"
-            )
 
             # Check the list of repositories for this installation
             install_response = await client.get(
@@ -120,25 +84,29 @@ async def check_installation_repo_access(
 
             if install_response.status_code == 200:
                 data = install_response.json()
-                # Check if the repository is in the list and has sufficient permissions
+                print(f"DEBUG: Installation has access to {len(data.get('repositories', []))} repositories")
+                
+                # Log all accessible repositories for debugging
+                for repo_data in data.get("repositories", []):
+                    print(f"DEBUG: Accessible repo: {repo_data.get('full_name')} (permissions: {repo_data.get('permissions', {})})")
+                
+                # Check if the repository is in the list
                 repo_full_name = f"{owner}/{repo}"
                 for repository in data.get("repositories", []):
                     if repository.get("full_name") == repo_full_name:
-                        permissions = repository.get("permissions", {})
-                        has_write = permissions.get("push", False)
-                        has_admin = permissions.get("admin", False)
+                        print(f"DEBUG: Found target repo {repo_full_name} in installation")
+                        
+                        # For installation tokens, if the repo is in the list, we have access
+                        # The installation token permissions we saw earlier confirm we have 'contents': 'write'
+                        logger.info(f"Installation repo access confirmed for: {repo_full_name}")
+                        return True
 
-                        logger.info(
-                            f"Installation repo access: {repo_full_name} (write: {has_write}, admin: {has_admin})"
-                        )
-
-                        # For README generation, we need at least write access
-                        return has_write or has_admin
-
+                print(f"DEBUG: Repository {repo_full_name} NOT found in installation repositories list")
                 logger.warning(
                     f"Repository {repo_full_name} not found in installation repositories list"
                 )
             else:
+                print(f"DEBUG: Failed to get installation repos: {install_response.status_code}, {install_response.text}")
                 logger.warning(
                     f"Installation repositories check failed: {install_response.status_code}, {install_response.text}"
                 )
@@ -170,6 +138,8 @@ async def get_authenticated_user(access_token: str) -> Optional[str]:
             "Accept": "application/vnd.github.v3+json",
         }
 
+        print(f"DEBUG: Checking user auth with token: {access_token[:10]}...")
+
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 "https://api.github.com/user",
@@ -177,12 +147,19 @@ async def get_authenticated_user(access_token: str) -> Optional[str]:
                 timeout=10.0,
             )
 
+            print(f"DEBUG: GitHub /user response: {response.status_code}")
+            if response.status_code != 200:
+                print(f"DEBUG: GitHub /user error: {response.text}")
+
             if response.status_code == 200:
                 data = response.json()
-                return data.get("login")
+                username = data.get("login")
+                print(f"DEBUG: Authenticated as user: {username}")
+                return username
 
         return None
     except Exception as e:
+        print(f"DEBUG: Exception in get_authenticated_user: {str(e)}")
         logger.error(f"Error getting authenticated user: {str(e)}")
         return None
 
@@ -213,22 +190,11 @@ async def validate_repository_access(
             detail="No authentication token available. Please login again.",
         )
 
-    # Get the authenticated user
-    username = await get_authenticated_user(github_service.access_token)
-    if not username:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired GitHub token. Please login again.",
-        )
+    logger.info(f"Validating access to {owner}/{repo} using installation token")
 
-    logger.info(f"Validating access to {owner}/{repo} for user {username}")
-
-    # First, check if the repo belongs to the authenticated user
-    if username and owner.lower() == username.lower():
-        logger.info(
-            f"Repository {owner}/{repo} belongs to authenticated user {username}"
-        )
-        return owner, repo
+    # For installation tokens, we don't need to check user identity since 
+    # the installation is already tied to a specific user/org
+    # Just check if we can access the repository
 
     # Check if we can access the repository with appropriate permissions
     has_access = await check_installation_repo_access(

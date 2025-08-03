@@ -18,14 +18,19 @@ async def verify_auth_header(authorization: str = Header(...)) -> Dict[str, Any]
         )
 
     token = authorization.split(" ")[1]
+    
+    print(f"DEBUG: Received token: {token[:50]}...")
+    print(f"DEBUG: Using SECRET_KEY: {settings.SECRET_KEY[:10]}...")
 
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        print(f"DEBUG: Token decoded successfully. Payload keys: {list(payload.keys())}")
         return payload
     except jwt.PyJWTError as e:
+        print(f"DEBUG: JWT decode failed: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid token: {str(e)}",
+            detail=f"JWT decode failed: {str(e)}. Please get a new token by logging in again.",
         )
 
 
@@ -80,21 +85,26 @@ async def get_github_service(
 ) -> GitHubService:
     """Get GitHub service with access token from token payload."""
 
-    # Check for test/development environment
-    if settings.ENVIRONMENT == "development":
-        # Use a dummy token for development
-        test_token = settings.GITHUB_TEST_TOKEN
-        return GitHubService(test_token)
-
     installation_id = payload.get("installation_id")
+    print(f"DEBUG: installation_id from token: {installation_id}")
+    
     if not installation_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="No GitHub installation found. Please install the app first.",
+            detail=f"No GitHub installation found in token. Token payload: {list(payload.keys())}. Please complete the GitHub App installation.",
         )
 
-    access_token = await get_installation_access_token(installation_id)
-    return GitHubService(access_token)
+    try:
+        print(f"DEBUG: Attempting to get access token for installation {installation_id}")
+        access_token = await get_installation_access_token(installation_id)
+        print(f"DEBUG: Successfully got access token: {access_token[:10]}...")
+        return GitHubService(access_token)
+    except Exception as e:
+        print(f"DEBUG: Failed to get GitHub access token: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Failed to get GitHub access token for installation {installation_id}: {str(e)}. Please login again.",
+        )
 
 
 def get_gemini_service() -> GeminiService:
