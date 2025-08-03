@@ -1,14 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import APIKeyCookie
 
 from app.exceptions import add_exception_handlers
 from app.config import settings
 from app.api.routes import auth, readme, webhooks
 from app.middlewares import SessionMiddleware
 from app.db.mongodb import connect_to_mongodb, close_mongodb_connection
-
-cookie_scheme = APIKeyCookie(name=settings.SESSION_COOKIE_NAME)
 
 
 def create_application() -> FastAPI:
