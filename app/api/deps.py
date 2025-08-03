@@ -15,10 +15,7 @@ logger = logging.getLogger(__name__)
 async def verify_auth_header(authorization: str = Header(...)) -> Dict[str, Any]:
     """Verify authorization header and return token payload."""
     if not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authorization header format. Use 'Bearer {token}'",
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authorization header format. Use 'Bearer {token}'")
 
     token = authorization.split(" ")[1]
 
@@ -26,10 +23,7 @@ async def verify_auth_header(authorization: str = Header(...)) -> Dict[str, Any]
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
         return payload
     except jwt.PyJWTError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"JWT decode failed: {str(e)}. Please get a new token by logging in again.",
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT decode failed: {str(e)}. Please get a new token by logging in again.")
 
 
 async def get_current_user(
@@ -37,10 +31,7 @@ async def get_current_user(
 ) -> str:
     """Get current user from token payload."""
     if "sub" not in payload:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token payload",
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
     return payload["sub"]
 
 
@@ -50,17 +41,11 @@ async def get_db_user(
     """Get current user from database."""
     username = payload.get("sub")
     if not username:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token payload",
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
 
     user = await get_user_by_username(username)
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found in database",
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found in database")
 
     return user
 
@@ -71,10 +56,7 @@ async def get_installation_id(
     """Get GitHub App installation ID from token payload."""
     installation_id = payload.get("installation_id")
     if not installation_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="No GitHub installation found. Please install the app first.",
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No GitHub installation found. Please install the app first.")
     return installation_id
 
 
@@ -86,20 +68,14 @@ async def get_github_service(
     installation_id = payload.get("installation_id")
     
     if not installation_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"No GitHub installation found in token. Token payload: {list(payload.keys())}. Please complete the GitHub App installation.",
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"No GitHub installation found in token. Token payload: {list(payload.keys())}. Please complete the GitHub App installation.")
 
     try:
         access_token = await get_installation_access_token(installation_id)
         return GitHubService(access_token)
     except Exception as e:
         logger.error(f"Failed to get GitHub access token for installation {installation_id}: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Failed to get GitHub access token for installation {installation_id}: {str(e)}. Please login again.",
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Failed to get GitHub access token for installation {installation_id}: {str(e)}. Please login again.")
 
 
 def get_gemini_service() -> GeminiService:

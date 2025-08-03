@@ -19,10 +19,7 @@ def parse_repo_url(repo_url: str) -> Tuple[str, str]:
         if len(parts) >= 2:
             return parts[-2], parts[-1].split(".git")[0]
 
-    raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail="Invalid repository URL format. Please use 'owner/repo' or a full GitHub URL.",
-    )
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid repository URL format. Please use 'owner/repo' or a full GitHub URL.")
 
 
 async def check_installation_repo_access(
@@ -49,9 +46,7 @@ async def check_installation_repo_access(
                 )
 
                 if install_response.status_code != 200:
-                    logger.warning(
-                        f"Failed to get installation repos (page {page}): {install_response.status_code}"
-                    )
+                    logger.warning(f"Failed to get installation repos (page {page}): {install_response.status_code}")
                     break
 
                 data = install_response.json()
@@ -69,22 +64,15 @@ async def check_installation_repo_access(
             repo_full_name = f"{owner}/{repo}"
             for repository in all_repositories:
                 if repository.get("full_name") == repo_full_name:
-                    logger.info(
-                        f"Installation repo access confirmed for: {repo_full_name}"
-                    )
+                    logger.info(f"Installation repo access confirmed for: {repo_full_name}")
                     return True
 
-            logger.warning(
-                f"Repository {repo_full_name} not found in installation repositories list"
-            )
+            logger.warning(f"Repository {repo_full_name} not found in installation repositories list")
 
         logger.warning(f"No access to repository {owner}/{repo} with provided token")
         return False
     except Exception as e:
-        logger.error(
-            f"Error checking repository access for {owner}/{repo}: {str(e)}",
-            exc_info=True,
-        )
+        logger.error(f"Error checking repository access for {owner}/{repo}: {str(e)}", exc_info=True)
         return False
 
 
@@ -121,21 +109,13 @@ async def validate_repository_access(
     owner, repo = parse_repo_url(repository_url)
 
     if not hasattr(github_service, "access_token") or not github_service.access_token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="No authentication token available. Please login again.",
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No authentication token available. Please login again.")
 
     logger.info(f"Validating access to {owner}/{repo} using installation token")
 
-    has_access = await check_installation_repo_access(
-        github_service.access_token, owner, repo
-    )
+    has_access = await check_installation_repo_access(github_service.access_token, owner, repo)
     if not has_access:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"You don't have sufficient permissions for {owner}/{repo}. Please ensure the GitHub App is installed on this repository and has write access.",
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"You don't have sufficient permissions for {owner}/{repo}. Please ensure the GitHub App is installed on this repository and has write access.")
 
     logger.info(f"Access verified for repository {owner}/{repo}")
     return owner, repo

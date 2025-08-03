@@ -194,9 +194,7 @@ async def verify_token(token: str):
             "installation_id": payload.get("installation_id"),
         }
     except jwt.PyJWTError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid token: {str(e)}"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid token: {str(e)}")
 
 
 @router.get("/repositories")
@@ -207,10 +205,7 @@ async def get_repositories(
     try:
         # Extract token from Authorization header
         if not authorization.startswith("Bearer "):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authorization header format. Use 'Bearer {token}'",
-            )
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authorization header format. Use 'Bearer {token}'")
 
         token = authorization.split(" ")[1]
 
@@ -219,10 +214,7 @@ async def get_repositories(
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
             installation_id = payload.get("installation_id")
         except jwt.PyJWTError:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired token",
-            )
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
 
         if not installation_id:
             return {
@@ -250,22 +242,17 @@ async def get_repositories(
                 response = await client.get(url, headers=headers)
                 
                 if response.status_code != 200:
-                    raise AuthException(
-                        status_code=response.status_code,
-                        detail=f"Failed to get repositories: {response.text}",
-                    )
+                    raise AuthException(status_code=response.status_code, detail=f"Failed to get repositories: {response.text}")
 
                 data = response.json()
                 repositories = data.get("repositories", [])
                 
                 if not repositories:
-                    # No more repositories to fetch
                     break
                     
                 all_repositories.extend(repositories)
                 page += 1
                 
-                # If we got less than per_page, we've reached the end
                 if len(repositories) < per_page:
                     break
 
@@ -289,10 +276,7 @@ async def get_repositories(
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch repositories: {str(e)}",
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to fetch repositories: {str(e)}")
 
 
 @router.get("/me")
@@ -303,10 +287,7 @@ async def get_me(
     try:
         # Extract token from Authorization header
         if not authorization.startswith("Bearer "):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authorization header format. Use 'Bearer {token}'",
-            )
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authorization header format. Use 'Bearer {token}'")
 
         token = authorization.split(" ")[1]
 
@@ -344,10 +325,7 @@ async def refresh_token(
     """Refresh an authentication token."""
     try:
         if not authorization.startswith("Bearer "):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authorization header format. Use 'Bearer {token}'",
-            )
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authorization header format. Use 'Bearer {token}'")
 
         token = authorization.split(" ")[1]
 
@@ -620,10 +598,7 @@ async def get_installation_settings(
     """Get GitHub App installation details and settings."""
     try:
         if not authorization.startswith("Bearer "):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authorization header format",
-            )
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authorization header format")
 
         token = authorization.split(" ")[1]
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
@@ -713,10 +688,7 @@ async def reinstall_github_app(
     """Generate reinstall URL for GitHub App (for changing permissions)."""
     try:
         if not authorization.startswith("Bearer "):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authorization header format",
-            )
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authorization header format")
 
         token = authorization.split(" ")[1]
         jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
@@ -743,10 +715,7 @@ async def revoke_github_app(
     """Revoke GitHub App installation and clear user data."""
     try:
         if not authorization.startswith("Bearer "):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authorization header format",
-            )
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authorization header format")
 
         token = authorization.split(" ")[1]
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
