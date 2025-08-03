@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 
 from app.exceptions import add_exception_handlers
 from app.config import settings
@@ -82,8 +83,8 @@ app = create_application()
 
 @app.get("/")
 async def root():
-    """Root for health check."""
-    return {"message": f"Welcome to {settings.PROJECT_NAME} API!"}
+    """Redirect root to docs."""
+    return RedirectResponse(url="/docs")
 
 
 @app.get("/test")
