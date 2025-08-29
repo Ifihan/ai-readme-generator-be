@@ -15,6 +15,7 @@ class Settings(BaseSettings):
         "http://127.0.0.1:8000",
         "https://ai-readme-generator-be-912048666815.us-central1.run.app",
         "0.0.0.0",
+        "https://ai-readme-generator-912048666815.us-central1.run.app/",
     ]
     ENVIRONMENT: str = "development"  # Options: development, production, testing
 
@@ -30,11 +31,11 @@ class Settings(BaseSettings):
     GITHUB_TEST_TOKEN: Optional[str]
     WEBHOOK_URL: str
 
-    # GitHub OAuth settings  
+    # GitHub OAuth settings
     GITHUB_CLIENT_ID: str
     GITHUB_CLIENT_SECRET: str
     OAUTH_REDIRECT_URL: str
-    
+
     REDIRECT_URL: str
 
     GEMINI_API_KEY: str
