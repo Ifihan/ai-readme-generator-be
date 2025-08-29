@@ -15,7 +15,7 @@ class Settings(BaseSettings):
         "http://127.0.0.1:8000",
         "https://ai-readme-generator-be-912048666815.us-central1.run.app",
         "0.0.0.0",
-        "https://ai-readme-generator-912048666815.us-central1.run.app/",
+        "https://ai-readme-generator-912048666815.us-central1.run.app",
     ]
     ENVIRONMENT: str = "development"  # Options: development, production, testing
 
