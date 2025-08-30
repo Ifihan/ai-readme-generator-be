@@ -17,7 +17,6 @@ from app.core.auth import (
     get_installation_access_token,
     generate_github_app_jwt,
     create_user_session,
-    delete_session,
     get_oauth_access_token,
     get_github_user_oauth,
     create_jwt_token,

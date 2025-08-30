@@ -222,7 +222,7 @@ class GitHubService:
         """Get representative code samples from the repository."""
         owner, repo = self._parse_repo_url(repo_url)
         repo_details = await self.get_repository_details(repo_url)
-        primary_language = repo_details.get("language", "").lower()
+        primary_language = (repo_details.get("language") or "").lower()
         default_branch = repo_details.get("default_branch", "main")
 
         # Determine file extensions to look for based on primary language
