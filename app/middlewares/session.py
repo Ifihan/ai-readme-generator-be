@@ -12,7 +12,6 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-
 class SessionMiddleware(BaseHTTPMiddleware):
     """Middleware to handle session management."""
 

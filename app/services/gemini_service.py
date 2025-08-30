@@ -18,9 +18,7 @@ from app.utils.markdown_utils import (
 from app.exceptions import GeminiApiException
 from app.config import settings
 
-
 logger = logging.getLogger(__name__)
-
 
 class GeminiService:
     """Service for interacting with Google's Gemini API through LangChain."""
@@ -81,24 +79,24 @@ class GeminiService:
         prompt = f"""
         # TASK
         You are an expert technical writer specializing in creating clear, professional, and comprehensive README documentation for software projects.
-        
+
         Create a README.md for a GitHub repository with the following information:
-        
+
         # REPOSITORY INFORMATION
         - Name: {repo_info.get('name', 'Unknown')}
         - Description: {repo_info.get('description', 'No description provided')}
         - Primary Language: {repo_info.get('language', 'Not specified')}
         - Topics/Tags: {', '.join(repo_info.get('topics', ['None']))}
-        
+
         # FILE STRUCTURE
         {file_structure}
-        
+
         {code_samples}
-        
+
         # REQUIRED SECTIONS
         The README should contain the following sections:
         {section_descriptions}
-        
+
         # GUIDELINES
         1. Use professional, clear, and concise language
         2. Follow Markdown best practices with proper headings, lists, code blocks, etc.
@@ -108,7 +106,7 @@ class GeminiService:
         6. Provide concrete examples where possible
         7. Format the output as a valid Markdown document
         8. Do not include sections that are not requested
-        
+
         # OUTPUT FORMAT
         Respond with ONLY the README.md content in Markdown format, without any additional explanation or conversation.
         """
@@ -200,17 +198,17 @@ class GeminiService:
         # Start with the header section (title, badges, short description)
         header_prompt = f"""
         Create only the header section of a README.md for the GitHub repository: {repo_info.get('name')}
-        
+
         Repository Information:
         - Name: {repo_info.get('name', 'Unknown')}
         - Description: {repo_info.get('description', 'No description provided')}
         - Primary Language: {repo_info.get('language', 'Not specified')}
-        
+
         Include:
         1. A title (H1 heading with the repository name)
         2. A brief one-paragraph description of what the project does
         3. Appropriate badges if needed (build status, version, license, etc.)
-        
+
         Format the output as Markdown. ONLY include the header section, no other sections.
         """
 
@@ -223,17 +221,17 @@ class GeminiService:
         for section in sorted(sections, key=lambda x: x.order):
             section_prompt = f"""
             Create ONLY the "{section.name}" section of a README.md for a GitHub repository.
-            
+
             Repository Information:
             - Name: {repo_info.get('name', 'Unknown')}
             - Description: {repo_info.get('description', 'No description provided')}
             - Primary Language: {repo_info.get('language', 'Not specified')}
             - Topics/Tags: {', '.join(repo_info.get('topics', ['None']))}
-            
+
             Section Details:
             - Section Name: {section.name}
             - Section Description: {section.description}
-            
+
             Additional Context:
             """
 
@@ -350,18 +348,18 @@ class GeminiService:
 
         prompt = f"""
         You are an expert technical writer specializing in improving README documentation.
-        
+
         Below is a README.md file that needs to be refined based on user feedback:
-        
+
         ```markdown
         {escaped_readme_content}
         ```
-        
+
         User feedback:
         {feedback}
-        
+
         Please revise the README to address this feedback while maintaining professional quality, proper Markdown formatting, and comprehensive coverage of the project.
-        
+
         Respond with ONLY the revised README.md content in Markdown format, without any additional explanation or conversation.
         """
 
@@ -384,10 +382,10 @@ class GeminiService:
         # First, analyze the feedback to identify which sections need refinement
         analyze_prompt = f"""
         Analyze the following feedback for a README.md file and identify which specific sections need to be refined.
-        
+
         README feedback:
         {feedback}
-        
+
         Respond with ONLY a comma-separated list of section names that need to be refined.
         If the feedback is general or applies to the entire document, respond with "ALL".
         Do not include any other text in your response.
@@ -410,14 +408,14 @@ class GeminiService:
                     escaped_chunk = chunk.replace("{", "{{").replace("}", "}}")
                     refine_chunk_prompt = f"""
                     Refine the following portion of a README.md file based on this feedback:
-                    
+
                     Feedback: {feedback}
-                    
+
                     README portion:
                     ```markdown
                     {escaped_chunk}
                     ```
-                    
+
                     Respond with ONLY the refined portion in Markdown format.
                     Maintain all section headings and structure exactly as they appear.
                     """
@@ -449,14 +447,14 @@ class GeminiService:
 
                         refine_section_prompt = f"""
                         Refine the following section of a README.md file based on this feedback:
-                        
+
                         Feedback: {feedback}
-                        
+
                         Section: {section_name}
                         ```markdown
                         {escaped_section_content}
                         ```
-                        
+
                         Respond with ONLY the refined section in Markdown format.
                         Maintain the section heading exactly as it appears.
                         """
@@ -511,8 +509,8 @@ class GeminiService:
     def _minimal_refinement(self, readme_content: str, feedback: str) -> str:
         """Perform minimal refinement as a final fallback."""
         # Add a note about the feedback at the top of the README
-        note = f"""<!-- 
-        Feedback received: 
+        note = f"""<!--
+        Feedback received:
         {feedback}
 
         This README requires further refinement based on the feedback above.
@@ -545,40 +543,40 @@ class GeminiService:
             # Create the analysis prompt
             prompt = f"""
             You are an expert at analyzing GitHub repositories and determining the best structure for README documentation.
-            
+
             # REPOSITORY INFORMATION
             - Name: {context['repo_name']}
             - Description: {context['repo_description']}
             - Programming Language: {context['programming_language']}
-            
+
             # FILE STRUCTURE
             {context['file_structure']}
-            
+
             # KEY FILES SUMMARY
             {context['key_files_summary']}
-            
+
             # TASK
             Analyze this repository and determine the most appropriate sections for a comprehensive README.md file.
-            
+
             ## ANALYSIS GUIDELINES
             1. Consider the programming language and common documentation practices for that ecosystem
             2. Look at the file structure to understand project organization and components
             3. Consider the purpose of the repository (library, application, framework, etc.)
             4. Identify sections that would be most useful for users of this project
-            
+
             # OUTPUT FORMAT
             Provide your analysis in this format:
-            
+
             ## Recommended Sections:
             - section_id_1: Section Title 1
             - section_id_2: Section Title 2
             (etc.)
-            
+
             ## Custom Sections:
             - Additional Section Title 1
             - Additional Section Title 2
             (etc.)
-            
+
             ## Analysis:
             Brief explanation of why these sections are recommended for this repository.
             """

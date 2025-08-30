@@ -8,7 +8,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
 class GitHubService:
     """Service for interacting with GitHub API."""
 
@@ -24,12 +23,12 @@ class GitHubService:
 
         if self.access_token:
             self.headers["Authorization"] = f"Bearer {self.access_token}"
-    
+
     async def _get_installation_token(self) -> str:
         """Get fresh installation access token for GitHub App operations."""
         if not self.installation_id:
             raise ValueError("Installation ID required for GitHub App operations")
-        
+
         from app.core.auth import get_installation_access_token
         return await get_installation_access_token(self.installation_id)
 
@@ -378,14 +377,14 @@ class GitHubService:
 
         # Upload the file
         response = await self._github_request_with_headers(
-            f"/repos/{owner}/{repo}/contents/{file_path}", 
-            method="PUT", 
+            f"/repos/{owner}/{repo}/contents/{file_path}",
+            method="PUT",
             data=data,
             headers=headers
         )
 
         return response
-    
+
     async def get_repository_branches(self, repo_url: str) -> List[Dict[str, Any]]:
         """Get all branches from a GitHub repository."""
         owner, repo = self._parse_repo_url(repo_url)
@@ -405,7 +404,7 @@ class GitHubService:
                 f"/repos/{owner}/{repo}/branches",
                 headers=headers
             )
-            
+
             # Format branch data for frontend
             branches = []
             for branch in branches_data:
@@ -415,22 +414,22 @@ class GitHubService:
                     "protected": branch.get("protected", False),
                     "is_default": False  # We'll set this separately
                 })
-            
+
             # Get default branch info
             repo_details = await self.get_repository_details(repo_url)
             default_branch = repo_details.get("default_branch", "main")
-            
+
             # Mark the default branch
             for branch in branches:
                 if branch["name"] == default_branch:
                     branch["is_default"] = True
                     break
-            
+
             # Sort branches: default first, then alphabetically
             branches.sort(key=lambda x: (not x["is_default"], x["name"]))
-            
+
             return branches
-            
+
         except ValueError as e:
             logger.error(f"Error getting repository branches: {str(e)}")
             # Return default branch as fallback

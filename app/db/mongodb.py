@@ -7,14 +7,11 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-
 class MongoDB:
     client: AsyncIOMotorClient = None
     db = None
 
-
 db = MongoDB()
-
 
 async def connect_to_mongodb():
     """Connect to MongoDB database."""
@@ -33,14 +30,12 @@ async def connect_to_mongodb():
             detail="Could not connect to MongoDB",
         )
 
-
 async def close_mongodb_connection():
     """Close MongoDB connection."""
     logger.info("Closing MongoDB connection...")
     if db.client:
         db.client.close()
         logger.info("MongoDB connection closed")
-
 
 def get_database():
     """Get MongoDB database instance."""

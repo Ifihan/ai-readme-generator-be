@@ -27,14 +27,12 @@ from app.exceptions import AuthException
 
 router = APIRouter(prefix="/auth")
 
-
 @router.get("/login", response_model=None)
 async def login(
     authorization: str = Header(None),
 ) -> Union[JSONResponse, RedirectResponse]:
     """Handle login logic - start OAuth for user identification, then GitHub App if needed."""
 
-    # If authorization header is provided, check if user is already logged in
     if authorization and authorization.startswith("Bearer "):
         try:
             token = authorization.split(" ")[1]
@@ -42,13 +40,12 @@ async def login(
             username = payload["sub"]
             installation_id = payload.get("installation_id")
 
-            # Check if user exists and has valid installation
             user = await get_user_by_username(username)
             if user and installation_id:
-                # Verify installation is still valid
+
                 try:
                     await get_installation_access_token(installation_id)
-                    # User is already authenticated with valid installation
+
                     return JSONResponse(
                         {
                             "status": "authenticated",
@@ -58,21 +55,19 @@ async def login(
                         }
                     )
                 except Exception:
-                    # Installation token invalid, continue to OAuth flow
+
                     pass
         except (jwt.PyJWTError, Exception):
-            # Token is invalid or expired, continue to OAuth flow
+
             pass
 
-    # For login, always start with OAuth to identify the user
-    # This ensures we get proper user data and can determine next steps
     oauth_url = (
         f"https://github.com/login/oauth/authorize?"
         f"client_id={settings.GITHUB_CLIENT_ID}&"
         f"redirect_uri={settings.OAUTH_REDIRECT_URL}&"
         f"scope=user:email"
     )
-    
+
     return JSONResponse(
         {
             "status": "oauth_redirect",
@@ -80,7 +75,6 @@ async def login(
             "message": "Redirecting to GitHub OAuth for user identification",
         }
     )
-
 
 @router.get("/callback")
 async def app_callback(
@@ -93,14 +87,13 @@ async def app_callback(
     then redirects to the frontend with a JWT token instead of using cookies.
     """
     try:
-        # Check if this is a GitHub App installation callback
+
         if installation_id:
-            # Get installation token
+
             access_token = await get_installation_access_token(installation_id)
 
-            # Get installation and user data
             async with httpx.AsyncClient() as client:
-                # Get installation data
+
                 installation_response = await client.get(
                     f"https://api.github.com/app/installations/{installation_id}",
                     headers={
@@ -118,7 +111,6 @@ async def app_callback(
                 installation_data = installation_response.json()
                 username = installation_data["account"]["login"]
 
-                # Attempt to get more user data if possible
                 user_response = await client.get(
                     "https://api.github.com/user",
                     headers={
@@ -131,18 +123,24 @@ async def app_callback(
                 if user_response.status_code == 200:
                     user_data = user_response.json()
 
-            # Get username from installation data
             username = user_data["login"]
 
-            # Get existing user data if user exists (to preserve OAuth-collected data)
             existing_user = await get_user_by_username(username)
-            
-            # Merge GitHub data - prioritize OAuth data over installation data
+
             merged_github_data = user_data.copy()
             if existing_user:
-                # If we have OAuth data from earlier, preserve it
-                for field in ["email", "name", "avatar_url", "id", "public_repos", "company"]:
-                    if existing_user.get(field.replace("name", "full_name") if field == "name" else field):
+
+                for field in [
+                    "email",
+                    "name",
+                    "avatar_url",
+                    "id",
+                    "public_repos",
+                    "company",
+                ]:
+                    if existing_user.get(
+                        field.replace("name", "full_name") if field == "name" else field
+                    ):
                         if field == "name":
                             merged_github_data["name"] = existing_user.get("full_name")
                         elif field == "id":
@@ -150,24 +148,20 @@ async def app_callback(
                         else:
                             merged_github_data[field] = existing_user.get(field)
 
-            # Create or update user in database with installation_id
             await create_user(
                 username=username,
                 installation_id=installation_id,
                 github_data=merged_github_data,
             )
 
-            # Create user session with installation access token
             await create_user_session(
                 username=username,
                 access_token=access_token,
                 installation_id=installation_id,
             )
 
-            # Generate JWT token for frontend
             token = create_jwt_token(username, installation_id)
 
-            # Redirect to frontend with token
             redirect_url = f"{settings.REDIRECT_URL}?token={token}"
             return RedirectResponse(url=redirect_url)
 
@@ -181,7 +175,6 @@ async def app_callback(
             detail=f"GitHub App installation failed: {str(e)}",
         )
 
-
 @router.post("/verify-token")
 async def verify_token(token: str):
     """Verify a JWT token and return user information."""
@@ -193,8 +186,9 @@ async def verify_token(token: str):
             "installation_id": payload.get("installation_id"),
         }
     except jwt.PyJWTError as e:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid token: {str(e)}")
-
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid token: {str(e)}"
+        )
 
 @router.get("/repositories")
 async def get_repositories(
@@ -202,18 +196,23 @@ async def get_repositories(
 ) -> Dict[str, Any]:
     """Get repositories for the current user using token-based authentication."""
     try:
-        # Extract token from Authorization header
+
         if not authorization.startswith("Bearer "):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authorization header format. Use 'Bearer {token}'")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authorization header format. Use 'Bearer {token}'",
+            )
 
         token = authorization.split(" ")[1]
 
-        # Verify the token
         try:
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
             installation_id = payload.get("installation_id")
         except jwt.PyJWTError:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired token",
+            )
 
         if not installation_id:
             return {
@@ -222,7 +221,6 @@ async def get_repositories(
                 "message": "No GitHub App installation found. Please install the app first.",
             }
 
-        # Get an installation token for GitHub API access
         token = await get_installation_access_token(installation_id)
 
         headers = {
@@ -231,31 +229,33 @@ async def get_repositories(
         }
 
         async with httpx.AsyncClient() as client:
-            # Handle pagination to get all repositories
+
             all_repositories = []
             page = 1
-            per_page = 100  # Maximum allowed by GitHub API
-            
+            per_page = 100
+
             while True:
                 url = f"https://api.github.com/installation/repositories?per_page={per_page}&page={page}"
                 response = await client.get(url, headers=headers)
-                
+
                 if response.status_code != 200:
-                    raise AuthException(status_code=response.status_code, detail=f"Failed to get repositories: {response.text}")
+                    raise AuthException(
+                        status_code=response.status_code,
+                        detail=f"Failed to get repositories: {response.text}",
+                    )
 
                 data = response.json()
                 repositories = data.get("repositories", [])
-                
+
                 if not repositories:
                     break
-                    
+
                 all_repositories.extend(repositories)
                 page += 1
-                
+
                 if len(repositories) < per_page:
                     break
 
-            # Simplify the repository data
             simplified_repos = [
                 {
                     "id": repo["id"],
@@ -275,8 +275,10 @@ async def get_repositories(
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to fetch repositories: {str(e)}")
-
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch repositories: {str(e)}",
+        )
 
 @router.get("/me")
 async def get_me(
@@ -284,17 +286,18 @@ async def get_me(
 ) -> Dict[str, Any]:
     """Gets current user information using token-based authentication."""
     try:
-        # Extract token from Authorization header
+
         if not authorization.startswith("Bearer "):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authorization header format. Use 'Bearer {token}'")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authorization header format. Use 'Bearer {token}'",
+            )
 
         token = authorization.split(" ")[1]
 
-        # Verify the token
         try:
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
 
-            # Get user from database to include any additional info
             user = await get_user_by_username(payload["sub"])
 
             return {
@@ -316,7 +319,6 @@ async def get_me(
             detail=f"Error retrieving user information: {str(e)}",
         )
 
-
 @router.post("/refresh-token")
 async def refresh_token(
     authorization: str = Header(...),
@@ -324,11 +326,13 @@ async def refresh_token(
     """Refresh an authentication token."""
     try:
         if not authorization.startswith("Bearer "):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authorization header format. Use 'Bearer {token}'")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authorization header format. Use 'Bearer {token}'",
+            )
 
         token = authorization.split(" ")[1]
 
-        # Verify the token
         try:
             payload = jwt.decode(
                 token,
@@ -337,16 +341,14 @@ async def refresh_token(
                 options={"verify_exp": False},
             )
 
-            # Check if token is too old to refresh (e.g., more than 30 days)
             iat = payload.get("iat", 0)
             now = datetime.now(timezone.utc).timestamp()
-            if iat and (now - iat > 60 * 60 * 24 * 30):  # 30 days
+            if iat and (now - iat > 60 * 60 * 24 * 30):
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Token too old to refresh, please login again",
                 )
 
-            # Create new token
             new_payload = {
                 "sub": payload["sub"],
                 "installation_id": payload.get("installation_id"),
@@ -371,12 +373,10 @@ async def refresh_token(
             detail=f"Error refreshing token: {str(e)}",
         )
 
-
 @router.post("/logout")
 async def logout() -> Dict[str, str]:
     """Logout endpoint for token-based authentication."""
     return {"message": "Logged out successfully. Please discard your token."}
-
 
 @router.get("/oauth/login")
 async def oauth_login() -> JSONResponse:
@@ -396,13 +396,12 @@ async def oauth_login() -> JSONResponse:
         }
     )
 
-
 @router.get("/status/{username}")
 async def get_user_status(username: str) -> JSONResponse:
     """Check the onboarding/authentication status of a user."""
     try:
         user = await get_user_by_username(username)
-        
+
         if not user:
             return JSONResponse(
                 {
@@ -411,14 +410,15 @@ async def get_user_status(username: str) -> JSONResponse:
                     "next_step": "signup",
                 }
             )
-        
-        # Check if user has GitHub data
-        has_github_data = bool(user.get("email") or user.get("full_name") or user.get("avatar_url"))
-        
+
+        has_github_data = bool(
+            user.get("email") or user.get("full_name") or user.get("avatar_url")
+        )
+
         if user.get("installation_id"):
-            # User has completed onboarding
+
             try:
-                # Verify installation is still valid
+
                 await get_installation_access_token(user["installation_id"])
                 return JSONResponse(
                     {
@@ -429,7 +429,7 @@ async def get_user_status(username: str) -> JSONResponse:
                     }
                 )
             except Exception:
-                # Installation invalid, needs reinstall
+
                 return JSONResponse(
                     {
                         "status": "installation_invalid",
@@ -439,7 +439,7 @@ async def get_user_status(username: str) -> JSONResponse:
                     }
                 )
         else:
-            # User exists but no GitHub App installation
+
             return JSONResponse(
                 {
                     "status": "incomplete",
@@ -449,7 +449,7 @@ async def get_user_status(username: str) -> JSONResponse:
                     "install_url": get_github_app_install_url(),
                 }
             )
-            
+
     except Exception as e:
         return JSONResponse(
             {
@@ -460,7 +460,6 @@ async def get_user_status(username: str) -> JSONResponse:
             status_code=500,
         )
 
-
 @router.get("/oauth/callback")
 async def oauth_callback(
     code: Optional[str] = Query(None),
@@ -469,7 +468,7 @@ async def oauth_callback(
     """Handle GitHub OAuth callback and determine user flow."""
     try:
         if error:
-            # OAuth was denied or failed
+
             redirect_url = f"{settings.REDIRECT_URL}?error={error}"
             return RedirectResponse(url=redirect_url)
 
@@ -477,70 +476,59 @@ async def oauth_callback(
             redirect_url = f"{settings.REDIRECT_URL}?error=no_code"
             return RedirectResponse(url=redirect_url)
 
-        # Exchange code for OAuth access token
         token_data = await get_oauth_access_token(code)
         oauth_access_token = token_data["access_token"]
 
-        # Get user info from GitHub
         user_data = await get_github_user_oauth(oauth_access_token)
         username = user_data["login"]
 
-        # Check if user exists in database
         existing_user = await get_user_by_username(username)
 
         if existing_user and existing_user.get("installation_id"):
-            # Existing user with GitHub App installed - verify and login
+
             try:
-                # Verify installation is still valid
+
                 await get_installation_access_token(existing_user["installation_id"])
 
-                # Update user data and last login
                 await create_user(
                     username=username,
                     installation_id=existing_user["installation_id"],
                     github_data=user_data,
                 )
 
-                # Get installation access token for session
-                installation_access_token = await get_installation_access_token(existing_user["installation_id"])
-                
-                # Create user session with installation access token
+                installation_access_token = await get_installation_access_token(
+                    existing_user["installation_id"]
+                )
+
                 await create_user_session(
                     username=username,
                     access_token=installation_access_token,
                     installation_id=existing_user["installation_id"],
                 )
 
-                # Create JWT token
                 jwt_token = create_jwt_token(username, existing_user["installation_id"])
 
-                # Redirect to frontend with token (successful login)
                 redirect_url = f"{settings.REDIRECT_URL}?token={jwt_token}"
                 return RedirectResponse(url=redirect_url)
 
             except Exception:
-                # Installation token invalid, need to reinstall
-                # Update user to remove invalid installation_id
+
                 await create_user(
                     username=username, installation_id=None, github_data=user_data
                 )
 
         elif existing_user and not existing_user.get("installation_id"):
-            # Existing user with incomplete onboarding - update data and redirect to GitHub App
+
             await create_user(
                 username=username, installation_id=None, github_data=user_data
             )
 
         else:
-            # New user - create with GitHub data but no installation_id
+
             await create_user(
                 username=username, installation_id=None, github_data=user_data
             )
 
-        # New user or user without GitHub App installation
-        # Redirect to GitHub App installation
-        # Note: GitHub App installations don't support custom state parameters
-        # The username will be identified from the installation account info
         install_url = get_github_app_install_url()
         return RedirectResponse(url=install_url)
 
@@ -551,7 +539,6 @@ async def oauth_callback(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"OAuth callback failed: {str(e)}",
         )
-
 
 @router.post("/test/create-user")
 async def create_test_user(
@@ -572,7 +559,6 @@ async def create_test_user(
         username=username, installation_id=installation_id, github_data=test_github_data
     )
 
-    # Generate test JWT token
     payload = {
         "sub": username,
         "installation_id": installation_id,
@@ -588,8 +574,6 @@ async def create_test_user(
         "message": f"Test user '{username}' created successfully",
     }
 
-
-# GitHub App Settings Endpoints
 @router.get("/settings/installation")
 async def get_installation_settings(
     authorization: str = Header(...),
@@ -597,7 +581,10 @@ async def get_installation_settings(
     """Get GitHub App installation details and settings."""
     try:
         if not authorization.startswith("Bearer "):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authorization header format")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authorization header format",
+            )
 
         token = authorization.split(" ")[1]
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
@@ -610,9 +597,8 @@ async def get_installation_settings(
                 "install_url": get_github_app_install_url(),
             }
 
-        # Get installation details from GitHub
         async with httpx.AsyncClient() as client:
-            # Get installation info
+
             installation_response = await client.get(
                 f"https://api.github.com/app/installations/{installation_id}",
                 headers={
@@ -629,7 +615,6 @@ async def get_installation_settings(
 
             installation_data = installation_response.json()
 
-            # Get installation repositories
             install_token = await get_installation_access_token(installation_id)
             repos_response = await client.get(
                 "https://api.github.com/installation/repositories",
@@ -639,7 +624,11 @@ async def get_installation_settings(
                 },
             )
 
-            repos_data = repos_response.json() if repos_response.status_code == 200 else {"repositories": []}
+            repos_data = (
+                repos_response.json()
+                if repos_response.status_code == 200
+                else {"repositories": []}
+            )
 
             return {
                 "installation": {
@@ -679,7 +668,6 @@ async def get_installation_settings(
             detail=f"Failed to get installation settings: {str(e)}",
         )
 
-
 @router.post("/settings/reinstall")
 async def reinstall_github_app(
     authorization: str = Header(...),
@@ -687,13 +675,16 @@ async def reinstall_github_app(
     """Generate reinstall URL for GitHub App (for changing permissions)."""
     try:
         if not authorization.startswith("Bearer "):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authorization header format")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authorization header format",
+            )
 
         token = authorization.split(" ")[1]
         jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
-        
+
         install_url = get_github_app_install_url()
-        
+
         return {
             "status": "reinstall_ready",
             "install_url": install_url,
@@ -706,7 +697,6 @@ async def reinstall_github_app(
             detail="Invalid or expired token",
         )
 
-
 @router.delete("/settings/revoke")
 async def revoke_github_app(
     authorization: str = Header(...),
@@ -714,7 +704,10 @@ async def revoke_github_app(
     """Revoke GitHub App installation and clear user data."""
     try:
         if not authorization.startswith("Bearer "):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authorization header format")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authorization header format",
+            )
 
         token = authorization.split(" ")[1]
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
@@ -727,7 +720,6 @@ async def revoke_github_app(
                 detail="No GitHub App installation to revoke",
             )
 
-        # Clear installation_id from user record
         await create_user(username=username, installation_id=None, github_data=None)
 
         return {

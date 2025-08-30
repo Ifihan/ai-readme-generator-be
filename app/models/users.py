@@ -4,7 +4,6 @@ from typing import Optional, Dict, List, Any
 from app.db.mongodb import get_database
 from app.models.mongodb_models import user_helper
 
-
 async def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
     """Get user by username from MongoDB."""
     db = get_database()
@@ -14,9 +13,8 @@ async def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
         return user_helper(user)
     return None
 
-
 async def create_user(
-    username: str, 
+    username: str,
     installation_id: Optional[int] = None,
     github_data: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
@@ -69,7 +67,6 @@ async def create_user(
     new_user = await db.users.find_one({"_id": result.inserted_id})
     return user_helper(new_user)
 
-
 async def update_user(username: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Update user in MongoDB."""
     db = get_database()
@@ -84,13 +81,11 @@ async def update_user(username: str, data: Dict[str, Any]) -> Optional[Dict[str,
     updated_user = await db.users.find_one({"username": username})
     return user_helper(updated_user)
 
-
 async def delete_user(username: str) -> bool:
     """Delete user from MongoDB."""
     db = get_database()
     result = await db.users.delete_one({"username": username})
     return result.deleted_count > 0
-
 
 async def list_users(skip: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
     """List users from MongoDB with pagination."""

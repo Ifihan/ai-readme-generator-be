@@ -19,15 +19,12 @@ from app.api.deps import get_github_service, get_gemini_service, get_current_use
 from app.exceptions import ReadmeGenerationException, GitHubException
 from app.utils.repository_validation import validate_repository_access
 
-
 router = APIRouter(prefix="/readme")
-
 
 @router.get("/sections", response_model=List[SectionTemplate])
 async def get_section_templates():
     """Get available README section templates."""
     return DEFAULT_SECTION_TEMPLATES
-
 
 @router.post("/generate", response_model=ReadmeResponse)
 async def generate_readme(
@@ -38,21 +35,17 @@ async def generate_readme(
 ):
     """Generate a README for a GitHub repository."""
     try:
-        # Validate repository access
+
         owner, repo = await validate_repository_access(
             github_service, request.repository_url
         )
 
-        # Update repository URL to ensure consistent format
         request.repository_url = f"{owner}/{repo}"
 
-        # Sort sections by order
         request.sections.sort(key=lambda x: x.order)
 
-        # Generate README content
         content = await gemini_service.generate_readme(request, github_service)
 
-        # Extract section headings from the content
         section_pattern = re.compile(r"^#+\s+(.+)$", re.MULTILINE)
         sections_included = section_pattern.findall(content)
 
@@ -67,7 +60,6 @@ async def generate_readme(
             detail=f"README generation failed: {str(e)}",
         )
 
-
 @router.post("/refine", response_model=ReadmeResponse)
 async def refine_readme(
     request: ReadmeRefineRequest,
@@ -76,10 +68,9 @@ async def refine_readme(
 ):
     """Refine an existing README based on feedback."""
     try:
-        # Refine README content
+
         content = await gemini_service.refine_readme(request.content, request.feedback)
 
-        # Extract section headings from the content
         section_pattern = re.compile(r"^#+\s+(.+)$", re.MULTILINE)
         sections_included = section_pattern.findall(content)
 
@@ -92,7 +83,6 @@ async def refine_readme(
             detail=f"README refinement failed: {str(e)}",
         )
 
-
 @router.post("/save", status_code=status.HTTP_201_CREATED)
 async def save_readme_to_github(
     request: ReadmeSaveRequest,
@@ -101,15 +91,13 @@ async def save_readme_to_github(
 ):
     """Save a README to a GitHub repository."""
     try:
-        # Validate repository access
+
         owner, repo = await validate_repository_access(
             github_service, request.repository_url
         )
 
-        # Update repository URL to ensure consistent format
         request.repository_url = f"{owner}/{repo}"
 
-        # Upload README to GitHub
         response = await github_service.upload_file_to_repo(
             repo_url=request.repository_url,
             file_path=request.path,
@@ -132,24 +120,21 @@ async def save_readme_to_github(
             detail=f"Failed to save README: {str(e)}",
         )
 
-
 @router.post("/download", status_code=status.HTTP_200_OK)
 async def download_readme(
     content: str, filename: str = "README.md", username: str = Depends(get_current_user)
 ):
     """Download README as a Markdown file."""
     try:
-        # Create a temporary file
+
         with tempfile.NamedTemporaryFile(delete=False, suffix=".md") as tmp:
             tmp.write(content.encode("utf-8"))
             tmp_path = tmp.name
 
-        # Return the file as a download
         response = FileResponse(
             path=tmp_path, media_type="text/markdown", filename=filename
         )
 
-        # Set up file cleanup after download
         response.background = lambda: os.unlink(tmp_path)
 
         return response
@@ -158,7 +143,6 @@ async def download_readme(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to download README: {str(e)}",
         )
-
 
 @router.get("/preview/{owner}/{repo}")
 async def preview_generated_readme(
@@ -176,27 +160,20 @@ async def preview_generated_readme(
     try:
         repo_url = f"{owner}/{repo}"
 
-        # Validate repository access
-        # This will raise HTTPException if access is denied
         await validate_repository_access(github_service, repo_url)
 
-        # Get repository details
         repo_details = await github_service.get_repository_details(repo_url)
 
-        # Get file structure
         file_structure = await github_service.get_repository_file_structure(repo_url)
 
-        # Get code samples
         code_samples = await github_service.get_code_samples(repo_url)
 
-        # Combine all info
         repo_info = {
             **repo_details,
             "file_structure": file_structure,
             "code_samples": code_samples,
         }
 
-        # Analyze repository to recommend sections
         analysis = await gemini_service.analyze_repository_for_readme(repo_info, [], {})
 
         return {
@@ -229,7 +206,6 @@ async def preview_generated_readme(
             detail=f"Failed to preview README generation: {str(e)}",
         )
 
-
 @router.get("/branches/{owner}/{repo}")
 async def get_repository_branches(
     owner: str,
@@ -240,19 +216,17 @@ async def get_repository_branches(
     """Get all branches from a repository for user selection."""
     try:
         repo_url = f"{owner}/{repo}"
-        
-        # Validate repository access
+
         await validate_repository_access(github_service, repo_url)
-        
-        # Get branches
+
         branches = await github_service.get_repository_branches(repo_url)
-        
+
         return {
             "repository": f"{owner}/{repo}",
             "branches": branches,
             "total_count": len(branches)
         }
-        
+
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
@@ -262,7 +236,6 @@ async def get_repository_branches(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get repository branches: {str(e)}",
         )
-
 
 @router.post("/branches/{owner}/{repo}")
 async def create_repository_branch(
@@ -276,19 +249,17 @@ async def create_repository_branch(
     """Create a new branch in the repository."""
     try:
         repo_url = f"{owner}/{repo}"
-        
-        # Validate repository access
+
         await validate_repository_access(github_service, repo_url)
-        
-        # Create branch
+
         result = await github_service.create_branch(repo_url, branch_name, source_branch)
-        
+
         return {
             "message": f"Branch '{branch_name}' created successfully",
             "branch": result,
             "repository": f"{owner}/{repo}"
         }
-        
+
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
@@ -298,7 +269,6 @@ async def create_repository_branch(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create branch: {str(e)}",
         )
-
 
 @router.get("/analyze/{owner}/{repo}")
 async def analyze_repository(
@@ -314,27 +284,20 @@ async def analyze_repository(
     try:
         repo_url = f"{owner}/{repo}"
 
-        # Validate repository access
-        # This will raise HTTPException if access is denied
         await validate_repository_access(github_service, repo_url)
 
-        # Get repository details
         repo_details = await github_service.get_repository_details(repo_url)
 
-        # Get file structure
         file_structure = await github_service.get_repository_file_structure(repo_url)
 
-        # Get code samples
         code_samples = await github_service.get_code_samples(repo_url)
 
-        # Combine all info
         repo_info = {
             **repo_details,
             "file_structure": file_structure,
             "code_samples": code_samples,
         }
 
-        # Extract files for analysis
         files = []
         for file_path in code_samples.keys():
             files.append(
@@ -346,12 +309,10 @@ async def analyze_repository(
                 }
             )
 
-        # Analyze repository to recommend sections
         analysis = await gemini_service.analyze_repository_for_readme(
             repo_info, files, code_samples
         )
 
-        # Convert recommended sections to template format
         recommended_templates = []
         for i, section in enumerate(analysis["recommended_sections"]):
             recommended_templates.append(
@@ -364,7 +325,6 @@ async def analyze_repository(
                 )
             )
 
-        # Add custom sections
         for i, section_name in enumerate(analysis["custom_sections"]):
             custom_id = f"custom_{i+1}"
             recommended_templates.append(

@@ -2,7 +2,6 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field
 
-
 class PyObjectId(str):
     """Custom ObjectId type for Pydantic models."""
 
@@ -17,7 +16,6 @@ class PyObjectId(str):
         if not ObjectId.is_valid(v):
             raise ValueError("Invalid ObjectId")
         return str(v)
-
 
 class UserModel(BaseModel):
     """User model for MongoDB."""
@@ -41,7 +39,6 @@ class UserModel(BaseModel):
             PyObjectId: lambda oid: str(oid),
         }
 
-
 class SessionModel(BaseModel):
     """Session model for MongoDB."""
 
@@ -60,7 +57,6 @@ class SessionModel(BaseModel):
             PyObjectId: lambda oid: str(oid),
         }
 
-
 def user_helper(user) -> Dict[str, Any]:
     """Helper function to convert MongoDB user to dict."""
     return {
@@ -76,7 +72,6 @@ def user_helper(user) -> Dict[str, Any]:
         "created_at": user["created_at"],
         "last_login": user["last_login"],
     }
-
 
 def session_helper(session) -> Dict[str, Any]:
     """Helper function to convert MongoDB session to dict."""

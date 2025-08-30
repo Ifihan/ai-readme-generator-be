@@ -5,7 +5,6 @@ from app.db.mongodb import get_database
 from app.schemas.auth import SessionData
 from app.config import settings
 
-
 async def create_session(
     username: str,
     access_token: str,
@@ -30,7 +29,6 @@ async def create_session(
     result = await db.sessions.insert_one(session_data)
     return session_id
 
-
 async def get_session(session_id: str) -> Optional[SessionData]:
     """Get session data from MongoDB."""
     db = get_database()
@@ -48,7 +46,6 @@ async def get_session(session_id: str) -> Optional[SessionData]:
         installation_id=session.get("installation_id"),
     )
 
-
 async def find_session_by_username(username: str) -> Optional[str]:
     """Find session ID by username."""
     db = get_database()
@@ -58,13 +55,11 @@ async def find_session_by_username(username: str) -> Optional[str]:
         return session["session_id"]
     return None
 
-
 async def delete_session(session_id: str) -> bool:
     """Delete a session from MongoDB."""
     db = get_database()
     result = await db.sessions.delete_one({"session_id": session_id})
     return result.deleted_count > 0
-
 
 async def refresh_session(session_id: str) -> bool:
     """Refresh session expiration time."""
@@ -88,7 +83,6 @@ async def refresh_session(session_id: str) -> bool:
     )
 
     return result.modified_count > 0
-
 
 async def cleanup_expired_sessions() -> int:
     """Remove expired sessions from MongoDB."""

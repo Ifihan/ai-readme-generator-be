@@ -2,13 +2,11 @@ import secrets
 import jwt
 import re
 
-
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 from urllib import parse
 
 from app.config import settings
-
 
 def create_csrf_token() -> str:
     """
@@ -16,13 +14,11 @@ def create_csrf_token() -> str:
     """
     return secrets.token_urlsafe(32)
 
-
 def generate_oauth_state() -> str:
     """
     Generate a secure state parameter for OAuth flow to prevent CSRF attacks.
     """
     return secrets.token_urlsafe(32)
-
 
 def create_access_token(subject: str, expires_delta: Optional[timedelta] = None) -> str:
     """Creates JWT token for the given subject."""
@@ -39,7 +35,6 @@ def create_access_token(subject: str, expires_delta: Optional[timedelta] = None)
 
     return encoded_jwt
 
-
 def verify_access_token(token: str) -> Optional[Dict[str, Any]]:
     """Verifies the JWT token and returns the payload."""
     try:
@@ -49,7 +44,6 @@ def verify_access_token(token: str) -> Optional[Dict[str, Any]]:
         return None
     except jwt.InvalidTokenError:
         return None
-
 
 def is_valid_github_redirect_url(url: str) -> bool:
     """Checks if the given URL is a valid GitHub redirect URL."""
@@ -63,7 +57,6 @@ def is_valid_github_redirect_url(url: str) -> bool:
     parsed_url = parse.urlparse(url)
 
     return parsed_url.netloc in allowed_domains
-
 
 def is_valid_github_token_format(token: str) -> bool:
     """Checks if the given token is a valid GitHub token."""

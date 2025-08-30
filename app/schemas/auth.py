@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 
 from app.config import settings
 
-
 class SessionData(BaseModel):
     """Session data model."""
 
@@ -26,7 +25,6 @@ class SessionData(BaseModel):
         """Check if the session is expired."""
         return datetime.now() > self.expires_at
 
-
 class GitHubInstallation(BaseModel):
     """GitHub App installation model."""
 
@@ -35,7 +33,6 @@ class GitHubInstallation(BaseModel):
     repository_selection: str
     app_id: int
     target_type: str
-
 
 class Repository(BaseModel):
     """Repository model."""

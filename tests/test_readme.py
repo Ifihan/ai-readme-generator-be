@@ -1,6 +1,5 @@
 from app.services.github_service import GitHubService
 
-
 class MockGitHubService(GitHubService):
     def __init__(self):
         # No need for a real token

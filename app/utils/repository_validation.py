@@ -5,7 +5,6 @@ from fastapi import HTTPException, status
 
 logger = logging.getLogger(__name__)
 
-
 def parse_repo_url(repo_url: str) -> Tuple[str, str]:
     """Parse a GitHub repository URL to extract owner and repo name."""
     if "/" in repo_url:
@@ -20,7 +19,6 @@ def parse_repo_url(repo_url: str) -> Tuple[str, str]:
             return parts[-2], parts[-1].split(".git")[0]
 
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid repository URL format. Please use 'owner/repo' or a full GitHub URL.")
-
 
 async def check_installation_repo_access(
     access_token: str, owner: str, repo: str
@@ -75,7 +73,6 @@ async def check_installation_repo_access(
         logger.error(f"Error checking repository access for {owner}/{repo}: {str(e)}", exc_info=True)
         return False
 
-
 async def get_authenticated_user(access_token: str) -> Optional[str]:
     """Get the authenticated user for a token."""
     try:
@@ -100,7 +97,6 @@ async def get_authenticated_user(access_token: str) -> Optional[str]:
     except Exception as e:
         logger.error(f"Error getting authenticated user: {str(e)}")
         return None
-
 
 async def validate_repository_access(
     github_service, repository_url: str

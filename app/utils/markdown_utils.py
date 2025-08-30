@@ -1,7 +1,6 @@
 import re
 from typing import List, Dict, Any, Tuple, Optional
 
-
 def extract_sections_from_markdown(markdown_text: str) -> Dict[str, str]:
     """
     Extract sections from a markdown document based on headings.
@@ -43,7 +42,6 @@ def extract_sections_from_markdown(markdown_text: str) -> Dict[str, str]:
 
     return sections
 
-
 def merge_markdown_sections(sections: Dict[str, str]) -> str:
     """
     Merge markdown sections into a single document.
@@ -60,7 +58,6 @@ def merge_markdown_sections(sections: Dict[str, str]) -> str:
             result.append(f"## {section}\n\n{content}")
 
     return "\n\n".join(result)
-
 
 def format_readme_metadata(repo_info: Dict[str, Any]) -> str:
     """
@@ -96,7 +93,6 @@ def format_readme_metadata(repo_info: Dict[str, Any]) -> str:
         metadata.append(" ".join(badges))
 
     return "\n\n".join(metadata)
-
 
 def identify_readme_sections(markdown_text: str) -> List[Dict[str, Any]]:
     """
@@ -187,7 +183,6 @@ def identify_readme_sections(markdown_text: str) -> List[Dict[str, Any]]:
 
     return standardized_sections
 
-
 def generate_toc(sections: List[Dict[str, Any]]) -> str:
     """
     Generate a table of contents from sections.
@@ -203,7 +198,6 @@ def generate_toc(sections: List[Dict[str, Any]]) -> str:
         toc.append(f"{i+1}. [{section['title']}](#{link})")
 
     return "\n".join(toc)
-
 
 def get_recommended_sections(repo_info: Dict[str, Any]) -> List[str]:
     """

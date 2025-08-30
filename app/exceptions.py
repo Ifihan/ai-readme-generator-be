@@ -2,7 +2,6 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from typing import Any, Dict, Optional
 
-
 class APIException(Exception):
     """Base class for API exceptions."""
 
@@ -16,36 +15,30 @@ class APIException(Exception):
         self.detail = detail
         self.headers = headers
 
-
 class GitHubException(APIException):
     """Exception raised for errors in the GitHub API."""
 
     pass
-
 
 class AIGenerationException(APIException):
     """Exception raised for errors in the AI generation."""
 
     pass
 
-
 class ReadmeGenerationException(APIException):
     """Exception raised for errors in README generation."""
 
     pass
-
 
 class GeminiApiException(APIException):
     """Exception raised for errors with the Gemini API."""
 
     pass
 
-
 class AuthException(APIException):
     """Exception raised for errors in the authentication."""
 
     pass
-
 
 def add_exception_handlers(app: FastAPI) -> None:
     """Add exception handlers to the FastAPI application."""

@@ -8,7 +8,6 @@ from app.api.routes import auth, readme, webhooks
 from app.middlewares import SessionMiddleware
 from app.db.mongodb import connect_to_mongodb, close_mongodb_connection
 
-
 def create_application() -> FastAPI:
     """Create the FastAPI application instance."""
     application = FastAPI(
@@ -77,21 +76,17 @@ def create_application() -> FastAPI:
 
     return application
 
-
 app = create_application()
-
 
 @app.get("/")
 async def root():
     """Redirect root to docs."""
     return RedirectResponse(url="/docs")
 
-
 @app.get("/test")
 def test_endpoint():
     """Endpoint for testing purposes."""
     return {"message": "API is working"}
-
 
 if __name__ == "__main__":
     import uvicorn
