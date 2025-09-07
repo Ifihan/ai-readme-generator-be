@@ -1,6 +1,7 @@
 from typing import List, Optional
 from pydantic import BaseModel, Field
 
+
 class ReadmeSection(BaseModel):
     """Model for a section in the README file."""
 
@@ -24,6 +25,7 @@ class ReadmeSection(BaseModel):
                 "order": 2,
             }
         }
+
 
 class ReadmeGenerationRequest(BaseModel):
     """Model for a README generation request."""
@@ -65,6 +67,7 @@ class ReadmeGenerationRequest(BaseModel):
             }
         }
 
+
 class ReadmeResponse(BaseModel):
     """Model for a README generation response."""
 
@@ -81,6 +84,7 @@ class ReadmeResponse(BaseModel):
             }
         }
 
+
 class ReadmeRefineRequest(BaseModel):
     """Model for refining an existing README."""
 
@@ -94,6 +98,7 @@ class ReadmeRefineRequest(BaseModel):
                 "feedback": "Please make the installation instructions more detailed.",
             }
         }
+
 
 class ReadmeSaveRequest(BaseModel):
     """Model for saving a README to GitHub."""
@@ -122,6 +127,7 @@ class ReadmeSaveRequest(BaseModel):
             }
         }
 
+
 class SectionTemplate(BaseModel):
     """Model for a predefined README section template."""
 
@@ -145,6 +151,7 @@ class SectionTemplate(BaseModel):
                 "order": 2,
             }
         }
+
 
 # Common section templates that can be offered to users
 DEFAULT_SECTION_TEMPLATES = [
@@ -208,7 +215,7 @@ DEFAULT_SECTION_TEMPLATES = [
         id="license",
         name="License",
         description="Licensing information for the project",
-        is_default=True,
+        is_default=False,
         order=9,
     ),
     SectionTemplate(
