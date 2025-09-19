@@ -109,7 +109,7 @@ class ReadmeSaveRequest(BaseModel):
     content: str = Field(..., description="README content to save")
     path: str = Field(default="README.md", description="Path to save the README file")
     commit_message: str = Field(
-        default="Update README.md", description="Commit message"
+        ..., description="Commit message for the README update"
     )
     branch: Optional[str] = Field(
         default=None,
