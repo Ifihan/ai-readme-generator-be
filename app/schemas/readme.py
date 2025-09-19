@@ -72,15 +72,15 @@ class ReadmeResponse(BaseModel):
     """Model for a README generation response."""
 
     content: str = Field(..., description="Generated README content in Markdown format")
-    sections_included: List[str] = Field(
-        ..., description="List of sections included in the README"
+    sections_generated: List[str] = Field(
+        ..., description="List of sections that were requested to be generated"
     )
 
     class Config:
         json_json_schema_extra = {
             "example": {
                 "content": "# Project Name\n\n## Introduction\n\nThis is a brief introduction...",
-                "sections_included": ["Introduction", "Installation"],
+                "sections_generated": ["Introduction", "Installation"],
             }
         }
 
@@ -109,7 +109,7 @@ class ReadmeSaveRequest(BaseModel):
     content: str = Field(..., description="README content to save")
     path: str = Field(default="README.md", description="Path to save the README file")
     commit_message: str = Field(
-        default="Update README.md", description="Commit message"
+        ..., description="Commit message for the README update"
     )
     branch: Optional[str] = Field(
         default=None,

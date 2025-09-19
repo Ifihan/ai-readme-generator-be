@@ -11,6 +11,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 from app.schemas.readme import ReadmeSection, ReadmeGenerationRequest
 from app.services.github_service import GitHubService
+from app.services.readme_prompts import ReadmePrompts
 from app.utils.markdown_utils import (
     extract_sections_from_markdown,
     merge_markdown_sections,
@@ -51,15 +52,11 @@ class GeminiService:
             max_output_tokens=max_tokens,
         )
 
+
     def _create_readme_prompt(
         self, repo_info: Dict[str, Any], sections: List[ReadmeSection]
     ) -> str:
         """Create a prompt for README generation based on repository information and requested sections."""
-        # Format sections for the prompt
-        section_descriptions = "\n".join(
-            [f"- {section.name}: {section.description}" for section in sections]
-        )
-
         # Add file structure and code samples if available
         file_structure = repo_info.get("file_structure", "Not provided")
         code_samples = ""
@@ -75,43 +72,7 @@ class GeminiService:
                 sample_content = sample_content.replace("{", "{{").replace("}", "}}")
                 code_samples += f"\nFile: {file_path}\n```\n{sample_content}\n```\n"
 
-        # Base prompt template
-        prompt = f"""
-        # TASK
-        You are an expert technical writer specializing in creating clear, professional, and comprehensive README documentation for software projects.
-
-        Create a README.md for a GitHub repository with the following information:
-
-        # REPOSITORY INFORMATION
-        - Name: {repo_info.get('name', 'Unknown')}
-        - Description: {repo_info.get('description', 'No description provided')}
-        - Primary Language: {repo_info.get('language', 'Not specified')}
-        - Topics/Tags: {', '.join(repo_info.get('topics', ['None']))}
-
-        # FILE STRUCTURE
-        {file_structure}
-
-        {code_samples}
-
-        # REQUIRED SECTIONS
-        The README should contain the following sections:
-        {section_descriptions}
-
-        # GUIDELINES
-        1. Use professional, clear, and concise language
-        2. Follow Markdown best practices with proper headings, lists, code blocks, etc.
-        3. Make the README comprehensive but not overly verbose
-        4. Include relevant badges where appropriate
-        5. For installation and usage sections, use real commands based on the repo's language/framework
-        6. Provide concrete examples where possible
-        7. Format the output as a valid Markdown document
-        8. Do not include sections that are not requested
-
-        # OUTPUT FORMAT
-        Respond with ONLY the README.md content in Markdown format, without any additional explanation or conversation.
-        """
-
-        return prompt
+        return ReadmePrompts.get_full_readme_prompt(repo_info, sections, file_structure, code_samples)
 
     async def generate_readme(
         self, request: ReadmeGenerationRequest, github_service: GitHubService
@@ -119,6 +80,38 @@ class GeminiService:
         """Generate a README for a GitHub repository with automatic fallback handling."""
         # Get repository information
         repo_info = await github_service.get_repository_details(request.repository_url)
+        
+        # Check for existing README first
+        owner, repo = github_service._parse_repo_url(request.repository_url)
+        existing_readme = await github_service.get_existing_readme(owner, repo)
+        
+        # If existing README found, improve it instead of creating from scratch
+        if existing_readme["exists"] and existing_readme["content"]:
+            logger.info(f"Found existing README ({existing_readme['filename']}) - will improve it")
+            
+            # Create improvement instructions based on requested sections
+            section_names = [section.name for section in request.sections]
+            improvement_feedback = f"""
+            Please improve this existing README by enhancing or adding the following sections: {', '.join(section_names)}.
+            
+            Repository Information:
+            - Name: {repo_info.get('name', 'Unknown')}
+            - Description: {repo_info.get('description', 'No description provided')}
+            - Primary Language: {repo_info.get('language', 'Not specified')}
+            - Clone URL: {repo_info.get('clone_url', 'https://github.com/username/repository.git')}
+            - License: {repo_info.get('license', 'Not specified')}
+            - License File: {repo_info.get('license_file', 'None found')}
+            
+            Guidelines:
+            - Keep good existing content but enhance it
+            - Add missing sections from the requested list
+            - Improve existing sections to be more comprehensive and professional
+            - Use the repository information above for accuracy
+            - Only link to license files that actually exist
+            - Follow modern README best practices
+            """
+            
+            return await self.refine_readme(existing_readme["content"], improvement_feedback)
 
         # Get file structure if needed
         if any(
@@ -189,76 +182,78 @@ class GeminiService:
             logger.warning("Potential truncation detected in README generation")
             raise ValueError("Potential truncation detected")
 
-        return readme_content
+        # Filter content to only include requested sections
+        filtered_content = self._filter_to_requested_sections(readme_content, sections)
+
+        return filtered_content
+
+    def _filter_to_requested_sections(self, content: str, sections: List[ReadmeSection]) -> str:
+        """Filter README content to only include requested sections."""
+        requested_section_names = {section.name.lower() for section in sections}
+        
+        # Split content into lines for processing
+        lines = content.split('\n')
+        filtered_lines = []
+        current_section = None
+        include_current_section = True
+        
+        for line in lines:
+            # Check if this line is a heading
+            if line.strip().startswith('#'):
+                # Extract section name from heading
+                heading_text = line.strip().lstrip('#').strip()
+                current_section = heading_text.lower()
+                
+                # Check if this section was requested
+                include_current_section = any(
+                    req_section in current_section or current_section in req_section
+                    for req_section in requested_section_names
+                )
+                
+                if include_current_section:
+                    filtered_lines.append(line)
+            else:
+                # Include content only if we're in a requested section
+                if include_current_section:
+                    filtered_lines.append(line)
+        
+        # If no sections were found or content is too short, return original
+        if len(filtered_lines) < 5:
+            logger.warning("Section filtering resulted in very short content, returning original")
+            return content
+            
+        return '\n'.join(filtered_lines)
 
     async def _generate_readme_by_section(
         self, repo_info: Dict[str, Any], sections: List[ReadmeSection]
     ) -> str:
         """Generate README content section by section."""
         # Start with the header section (title, badges, short description)
-        header_prompt = f"""
-        Create only the header section of a README.md for the GitHub repository: {repo_info.get('name')}
-
-        Repository Information:
-        - Name: {repo_info.get('name', 'Unknown')}
-        - Description: {repo_info.get('description', 'No description provided')}
-        - Primary Language: {repo_info.get('language', 'Not specified')}
-
-        Include:
-        1. A title (H1 heading with the repository name)
-        2. A brief one-paragraph description of what the project does
-        3. Appropriate badges if needed (build status, version, license, etc.)
-
-        Format the output as Markdown. ONLY include the header section, no other sections.
-        """
-
+        header_prompt = ReadmePrompts.get_header_prompt(repo_info)
         header_prompt_template = ChatPromptTemplate.from_template(header_prompt)
         header_chain = header_prompt_template | self.llm | StrOutputParser()
         header_content = await header_chain.ainvoke({})
 
-        # Generate each section separately
+        # Generate each section separately using section-specific prompts
         sections_content = []
         for section in sorted(sections, key=lambda x: x.order):
-            section_prompt = f"""
-            Create ONLY the "{section.name}" section of a README.md for a GitHub repository.
+            # Get section-specific prompt
+            section_prompt = ReadmePrompts.get_section_specific_prompt(section, repo_info)
 
-            Repository Information:
-            - Name: {repo_info.get('name', 'Unknown')}
-            - Description: {repo_info.get('description', 'No description provided')}
-            - Primary Language: {repo_info.get('language', 'Not specified')}
-            - Topics/Tags: {', '.join(repo_info.get('topics', ['None']))}
-
-            Section Details:
-            - Section Name: {section.name}
-            - Section Description: {section.description}
-
-            Additional Context:
-            """
-
-            # Add relevant context based on section type
-            if section.name.lower() in [
-                "project structure",
-                "file structure",
-                "organization",
-            ]:
-                section_prompt += f"\nFile Structure:\n{repo_info.get('file_structure', 'Not available')}\n"
-
+            # Add code samples context if relevant for the section
             if section.name.lower() in ["usage", "examples", "getting started"]:
                 sample_files = repo_info.get("code_samples", {})
-                section_prompt += "\nCode Samples:\n"
-                for file_path, content in sample_files.items():
-                    # Escape curly braces in code content by doubling them
-                    escaped_content = (
-                        content[:500].replace("{", "{{").replace("}", "}}")
-                    )
-                    section_prompt += (
-                        f"\nFile: {file_path}\n```\n{escaped_content}...\n```\n"
-                    )
-
-            section_prompt += """
-            Format the output as Markdown. Start with a level-2 heading (##) for the section name.
-            ONLY include this specific section, do not include any other sections.
-            """
+                if sample_files:
+                    code_context = "\n\nCode Samples for Reference:\n"
+                    for file_path, content in sample_files.items():
+                        # Escape curly braces in code content by doubling them
+                        escaped_content = (
+                            content[:500].replace("{", "{{").replace("}", "}}")
+                        )
+                        code_context += (
+                            f"\nFile: {file_path}\n```\n{escaped_content}...\n```\n"
+                        )
+                    section_prompt += code_context
 
             section_prompt_template = ChatPromptTemplate.from_template(section_prompt)
             section_chain = section_prompt_template | self.llm | StrOutputParser()
@@ -275,7 +270,11 @@ class GeminiService:
 
         # Combine all sections
         full_content = header_content + "\n\n" + "\n\n".join(sections_content)
-        return full_content
+        
+        # Apply filtering to ensure only requested sections are included
+        filtered_content = self._filter_to_requested_sections(full_content, sections)
+        
+        return filtered_content
 
     def _check_for_truncation(
         self, content: str, sections: List[ReadmeSection]

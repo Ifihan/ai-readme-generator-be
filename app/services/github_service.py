@@ -91,6 +91,9 @@ class GitHubService:
             for item in contributors_data[:5]
         ]  # Limit to top 5 contributors
 
+        # Check for license file existence
+        license_file = await self._check_for_license_file(owner, repo)
+        
         return {
             "name": repo_data.get("name"),
             "full_name": repo_data.get("full_name"),
@@ -100,17 +103,105 @@ class GitHubService:
             "topics": topics_data.get("names", []),
             "homepage": repo_data.get("homepage"),
             "default_branch": repo_data.get("default_branch"),
+            "clone_url": repo_data.get("clone_url"),
             "license": (
                 repo_data.get("license", {}).get("name")
                 if repo_data.get("license")
                 else None
             ),
+            "license_file": license_file,
             "stars": repo_data.get("stargazers_count"),
             "forks": repo_data.get("forks_count"),
             "issues": repo_data.get("open_issues_count"),
             "created_at": repo_data.get("created_at"),
             "updated_at": repo_data.get("updated_at"),
             "contributors": contributors,
+        }
+
+    async def _check_for_license_file(self, owner: str, repo: str) -> str:
+        """Check if a license file exists in the repository root."""
+        license_filenames = [
+            "LICENSE",
+            "LICENSE.md",
+            "LICENSE.txt",
+            "License",
+            "License.md",
+            "License.txt",
+            "license",
+            "license.md",
+            "license.txt"
+        ]
+        
+        try:
+            # Get root directory contents
+            contents = await self._github_request(f"/repos/{owner}/{repo}/contents/")
+            
+            if isinstance(contents, list):
+                existing_files = [item["name"] for item in contents if item["type"] == "file"]
+                
+                # Check for license files in order of preference
+                for license_file in license_filenames:
+                    if license_file in existing_files:
+                        return license_file
+                        
+        except ValueError as e:
+            logger.error(f"Error checking for license file: {str(e)}")
+            
+        return None
+
+    async def get_existing_readme(self, owner: str, repo: str) -> Dict[str, str]:
+        """Check for and read existing README file content."""
+        readme_filenames = [
+            "README.md",
+            "README.rst", 
+            "README.txt",
+            "README",
+            "readme.md",
+            "readme.rst",
+            "readme.txt", 
+            "readme",
+            "Readme.md",
+            "Readme.rst",
+            "Readme.txt",
+            "Readme"
+        ]
+        
+        try:
+            # Get root directory contents
+            contents = await self._github_request(f"/repos/{owner}/{repo}/contents/")
+            
+            if isinstance(contents, list):
+                existing_files = [item for item in contents if item["type"] == "file"]
+                
+                # Check for README files in order of preference
+                for readme_file in readme_filenames:
+                    for file_item in existing_files:
+                        if file_item["name"] == readme_file:
+                            try:
+                                # Get the file content
+                                file_response = await self._github_request(file_item["url"])
+                                if file_response.get("encoding") == "base64" and file_response.get("content"):
+                                    content = base64.b64decode(file_response["content"]).decode("utf-8")
+                                    return {
+                                        "filename": readme_file,
+                                        "content": content,
+                                        "exists": True,
+                                        "sha": file_response.get("sha"),
+                                        "size": file_response.get("size", 0)
+                                    }
+                            except (ValueError, UnicodeDecodeError) as e:
+                                logger.warning(f"Could not read README file {readme_file}: {str(e)}")
+                                continue
+                        
+        except ValueError as e:
+            logger.error(f"Error checking for existing README: {str(e)}")
+            
+        return {
+            "filename": None,
+            "content": None,
+            "exists": False,
+            "sha": None,
+            "size": 0
         }
 
     async def get_repository_file_structure(
