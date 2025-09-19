@@ -149,6 +149,61 @@ class GitHubService:
             
         return None
 
+    async def get_existing_readme(self, owner: str, repo: str) -> Dict[str, str]:
+        """Check for and read existing README file content."""
+        readme_filenames = [
+            "README.md",
+            "README.rst", 
+            "README.txt",
+            "README",
+            "readme.md",
+            "readme.rst",
+            "readme.txt", 
+            "readme",
+            "Readme.md",
+            "Readme.rst",
+            "Readme.txt",
+            "Readme"
+        ]
+        
+        try:
+            # Get root directory contents
+            contents = await self._github_request(f"/repos/{owner}/{repo}/contents/")
+            
+            if isinstance(contents, list):
+                existing_files = [item for item in contents if item["type"] == "file"]
+                
+                # Check for README files in order of preference
+                for readme_file in readme_filenames:
+                    for file_item in existing_files:
+                        if file_item["name"] == readme_file:
+                            try:
+                                # Get the file content
+                                file_response = await self._github_request(file_item["url"])
+                                if file_response.get("encoding") == "base64" and file_response.get("content"):
+                                    content = base64.b64decode(file_response["content"]).decode("utf-8")
+                                    return {
+                                        "filename": readme_file,
+                                        "content": content,
+                                        "exists": True,
+                                        "sha": file_response.get("sha"),
+                                        "size": file_response.get("size", 0)
+                                    }
+                            except (ValueError, UnicodeDecodeError) as e:
+                                logger.warning(f"Could not read README file {readme_file}: {str(e)}")
+                                continue
+                        
+        except ValueError as e:
+            logger.error(f"Error checking for existing README: {str(e)}")
+            
+        return {
+            "filename": None,
+            "content": None,
+            "exists": False,
+            "sha": None,
+            "size": 0
+        }
+
     async def get_repository_file_structure(
         self, repo_url: str, path: str = "", max_depth: int = 3, max_files: int = 100
     ) -> str:

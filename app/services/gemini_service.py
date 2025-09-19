@@ -80,6 +80,38 @@ class GeminiService:
         """Generate a README for a GitHub repository with automatic fallback handling."""
         # Get repository information
         repo_info = await github_service.get_repository_details(request.repository_url)
+        
+        # Check for existing README first
+        owner, repo = github_service._parse_repo_url(request.repository_url)
+        existing_readme = await github_service.get_existing_readme(owner, repo)
+        
+        # If existing README found, improve it instead of creating from scratch
+        if existing_readme["exists"] and existing_readme["content"]:
+            logger.info(f"Found existing README ({existing_readme['filename']}) - will improve it")
+            
+            # Create improvement instructions based on requested sections
+            section_names = [section.name for section in request.sections]
+            improvement_feedback = f"""
+            Please improve this existing README by enhancing or adding the following sections: {', '.join(section_names)}.
+            
+            Repository Information:
+            - Name: {repo_info.get('name', 'Unknown')}
+            - Description: {repo_info.get('description', 'No description provided')}
+            - Primary Language: {repo_info.get('language', 'Not specified')}
+            - Clone URL: {repo_info.get('clone_url', 'https://github.com/username/repository.git')}
+            - License: {repo_info.get('license', 'Not specified')}
+            - License File: {repo_info.get('license_file', 'None found')}
+            
+            Guidelines:
+            - Keep good existing content but enhance it
+            - Add missing sections from the requested list
+            - Improve existing sections to be more comprehensive and professional
+            - Use the repository information above for accuracy
+            - Only link to license files that actually exist
+            - Follow modern README best practices
+            """
+            
+            return await self.refine_readme(existing_readme["content"], improvement_feedback)
 
         # Get file structure if needed
         if any(
