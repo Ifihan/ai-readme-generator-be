@@ -46,10 +46,10 @@ async def generate_readme(
 
         content = await gemini_service.generate_readme(request, github_service)
 
-        section_pattern = re.compile(r"^#+\s+(.+)$", re.MULTILINE)
-        sections_included = section_pattern.findall(content)
+        # Return the sections that were requested to be generated
+        sections_generated = [section.name for section in request.sections]
 
-        return ReadmeResponse(content=content, sections_included=sections_included)
+        return ReadmeResponse(content=content, sections_generated=sections_generated)
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
@@ -71,10 +71,11 @@ async def refine_readme(
 
         content = await gemini_service.refine_readme(request.content, request.feedback)
 
+        # For refinement, parse the content to see what sections are present
         section_pattern = re.compile(r"^#+\s+(.+)$", re.MULTILINE)
-        sections_included = section_pattern.findall(content)
+        sections_generated = section_pattern.findall(content)
 
-        return ReadmeResponse(content=content, sections_included=sections_included)
+        return ReadmeResponse(content=content, sections_generated=sections_generated)
     except Exception as e:
         if isinstance(e, ReadmeGenerationException):
             raise e

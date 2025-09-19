@@ -91,6 +91,9 @@ class GitHubService:
             for item in contributors_data[:5]
         ]  # Limit to top 5 contributors
 
+        # Check for license file existence
+        license_file = await self._check_for_license_file(owner, repo)
+        
         return {
             "name": repo_data.get("name"),
             "full_name": repo_data.get("full_name"),
@@ -106,6 +109,7 @@ class GitHubService:
                 if repo_data.get("license")
                 else None
             ),
+            "license_file": license_file,
             "stars": repo_data.get("stargazers_count"),
             "forks": repo_data.get("forks_count"),
             "issues": repo_data.get("open_issues_count"),
@@ -113,6 +117,37 @@ class GitHubService:
             "updated_at": repo_data.get("updated_at"),
             "contributors": contributors,
         }
+
+    async def _check_for_license_file(self, owner: str, repo: str) -> str:
+        """Check if a license file exists in the repository root."""
+        license_filenames = [
+            "LICENSE",
+            "LICENSE.md",
+            "LICENSE.txt",
+            "License",
+            "License.md",
+            "License.txt",
+            "license",
+            "license.md",
+            "license.txt"
+        ]
+        
+        try:
+            # Get root directory contents
+            contents = await self._github_request(f"/repos/{owner}/{repo}/contents/")
+            
+            if isinstance(contents, list):
+                existing_files = [item["name"] for item in contents if item["type"] == "file"]
+                
+                # Check for license files in order of preference
+                for license_file in license_filenames:
+                    if license_file in existing_files:
+                        return license_file
+                        
+        except ValueError as e:
+            logger.error(f"Error checking for license file: {str(e)}")
+            
+        return None
 
     async def get_repository_file_structure(
         self, repo_url: str, path: str = "", max_depth: int = 3, max_files: int = 100

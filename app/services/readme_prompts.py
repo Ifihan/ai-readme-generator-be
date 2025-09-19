@@ -240,13 +240,26 @@ class ReadmePrompts:
             """
 
         elif section_name_lower in ["license", "licensing"]:
+            license_info = ""
+            if repo_info.get('license'):
+                license_info += f"- License Type: {repo_info.get('license')}\n            "
+            if repo_info.get('license_file'):
+                license_info += f"- License File: {repo_info.get('license_file')} (exists in repository)\n            "
+            else:
+                license_info += "- No license file found in repository root\n            "
+                
             return f"""
             Create ONLY the "{section.name}" section for this README.
             
             {base_info}
             
+            Additional License Information:
+            {license_info}
+            
             This section should:
-            - State the license type clearly
+            - State the license type clearly (use the license type from repository information if available)
+            - ONLY link to license file if one actually exists in the repository (license_file field above)
+            - If no license file exists, do NOT create a link to LICENSE.md or similar
             - Include standard license badge if appropriate
             - Mention any licensing restrictions or permissions
             - Keep it brief and factual
@@ -299,6 +312,8 @@ class ReadmePrompts:
         - Description: {repo_info.get('description', 'No description provided')}
         - Primary Language: {repo_info.get('language', 'Not specified')}
         - Clone URL: {repo_info.get('clone_url', 'https://github.com/username/repository.git')}
+        - License: {repo_info.get('license', 'Not specified')}
+        - License File: {repo_info.get('license_file', 'None found')}
         - Topics/Tags: {', '.join(repo_info.get('topics', ['None']))}
 
         # FILE STRUCTURE
@@ -307,22 +322,24 @@ class ReadmePrompts:
         {code_samples}
 
         # REQUIRED SECTIONS
-        The README should contain the following sections:
+        The README MUST start with a title (H1 heading with repository name) followed by ONLY the following sections (in this exact order):
         {section_descriptions}
 
         # CRITICAL WRITING GUIDELINES
-        1. Use second person for instructions (You can/should) and neutral imperative commands (Install the package, Run the tests)
-        2. Use third person where appropriate (This project provides, The application supports)
-        3. NEVER use first person (We/I/Our)
-        4. Write directly to users with clear, actionable instructions
-        5. Use active voice and direct commands (e.g., "Install the package" not "The package can be installed")
-        6. Be specific and actionable - avoid vague statements
-        7. Use professional, clear, and concise language
-        8. Follow Markdown best practices with proper headings, lists, code blocks, etc.
-        9. For installation and usage sections, use real commands based on the repo's language/framework
-        10. Provide concrete examples where possible
-        11. Format the output as a valid Markdown document
-        12. Do not include sections that are not requested
+        1. ONLY create the sections listed above - do NOT add any additional sections
+        2. Use second person for instructions (You can/should) and neutral imperative commands (Install the package, Run the tests)
+        3. Use third person where appropriate (This project provides, The application supports)
+        4. NEVER use first person (We/I/Our)
+        5. Write directly to users with clear, actionable instructions
+        6. Use active voice and direct commands (e.g., "Install the package" not "The package can be installed")
+        7. Be specific and actionable - avoid vague statements
+        8. Use professional, clear, and concise language
+        9. Follow Markdown best practices with proper headings, lists, code blocks, etc.
+        10. For installation and usage sections, use real commands based on the repo's language/framework
+        11. Provide concrete examples where possible
+        12. For license sections, ONLY link to license files that actually exist (check License File field above)
+        13. Format the output as a valid Markdown document
+        14. Do NOT include any sections beyond those explicitly requested above
 
         # OUTPUT FORMAT
         Respond with ONLY the README.md content in Markdown format, without any additional explanation or conversation.

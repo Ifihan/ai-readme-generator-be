@@ -150,7 +150,47 @@ class GeminiService:
             logger.warning("Potential truncation detected in README generation")
             raise ValueError("Potential truncation detected")
 
-        return readme_content
+        # Filter content to only include requested sections
+        filtered_content = self._filter_to_requested_sections(readme_content, sections)
+
+        return filtered_content
+
+    def _filter_to_requested_sections(self, content: str, sections: List[ReadmeSection]) -> str:
+        """Filter README content to only include requested sections."""
+        requested_section_names = {section.name.lower() for section in sections}
+        
+        # Split content into lines for processing
+        lines = content.split('\n')
+        filtered_lines = []
+        current_section = None
+        include_current_section = True
+        
+        for line in lines:
+            # Check if this line is a heading
+            if line.strip().startswith('#'):
+                # Extract section name from heading
+                heading_text = line.strip().lstrip('#').strip()
+                current_section = heading_text.lower()
+                
+                # Check if this section was requested
+                include_current_section = any(
+                    req_section in current_section or current_section in req_section
+                    for req_section in requested_section_names
+                )
+                
+                if include_current_section:
+                    filtered_lines.append(line)
+            else:
+                # Include content only if we're in a requested section
+                if include_current_section:
+                    filtered_lines.append(line)
+        
+        # If no sections were found or content is too short, return original
+        if len(filtered_lines) < 5:
+            logger.warning("Section filtering resulted in very short content, returning original")
+            return content
+            
+        return '\n'.join(filtered_lines)
 
     async def _generate_readme_by_section(
         self, repo_info: Dict[str, Any], sections: List[ReadmeSection]
@@ -198,7 +238,11 @@ class GeminiService:
 
         # Combine all sections
         full_content = header_content + "\n\n" + "\n\n".join(sections_content)
-        return full_content
+        
+        # Apply filtering to ensure only requested sections are included
+        filtered_content = self._filter_to_requested_sections(full_content, sections)
+        
+        return filtered_content
 
     def _check_for_truncation(
         self, content: str, sections: List[ReadmeSection]
