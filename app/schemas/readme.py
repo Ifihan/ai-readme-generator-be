@@ -1,5 +1,6 @@
 from typing import List, Optional
 from pydantic import BaseModel, Field
+from datetime import datetime
 
 
 class ReadmeSection(BaseModel):
@@ -261,3 +262,62 @@ DEFAULT_SECTION_TEMPLATES = [
         order=15,
     ),
 ]
+
+
+class ReadmeHistoryEntry(BaseModel):
+    """Model for a README history entry."""
+    
+    id: Optional[str] = Field(None, description="Unique identifier for the history entry")
+    username: str = Field(..., description="Username of the user who generated the README")
+    repository_url: str = Field(..., description="Repository URL for which README was generated")
+    repository_name: str = Field(..., description="Repository name for display")
+    content: str = Field(..., description="Generated README content")
+    sections_generated: List[str] = Field(..., description="List of sections that were generated")
+    generation_type: str = Field(..., description="Type of generation (new, improved, refined)")
+    created_at: datetime = Field(..., description="When the README was generated")
+    file_size: int = Field(..., description="Size of the README content in bytes")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "id": "64f8b2a1c9e1234567890abc",
+                "username": "john_doe",
+                "repository_url": "https://github.com/john/awesome-project",
+                "repository_name": "awesome-project",
+                "content": "# Awesome Project\n\n## Introduction\n\nThis is an awesome project...",
+                "sections_generated": ["Introduction", "Installation", "Usage"],
+                "generation_type": "new",
+                "created_at": "2024-01-15T10:30:00Z",
+                "file_size": 1024
+            }
+        }
+
+
+class ReadmeHistoryResponse(BaseModel):
+    """Model for README history list response."""
+    
+    entries: List[ReadmeHistoryEntry] = Field(..., description="List of README history entries")
+    total_count: int = Field(..., description="Total number of history entries for the user")
+    page: int = Field(..., description="Current page number")
+    page_size: int = Field(..., description="Number of entries per page")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "entries": [
+                    {
+                        "id": "64f8b2a1c9e1234567890abc",
+                        "username": "john_doe",
+                        "repository_url": "https://github.com/john/awesome-project",
+                        "repository_name": "awesome-project",
+                        "sections_generated": ["Introduction", "Installation"],
+                        "generation_type": "new",
+                        "created_at": "2024-01-15T10:30:00Z",
+                        "file_size": 1024
+                    }
+                ],
+                "total_count": 5,
+                "page": 1,
+                "page_size": 10
+            }
+        }
