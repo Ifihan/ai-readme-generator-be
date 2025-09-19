@@ -100,6 +100,7 @@ class GitHubService:
             "topics": topics_data.get("names", []),
             "homepage": repo_data.get("homepage"),
             "default_branch": repo_data.get("default_branch"),
+            "clone_url": repo_data.get("clone_url"),
             "license": (
                 repo_data.get("license", {}).get("name")
                 if repo_data.get("license")

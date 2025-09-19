@@ -175,6 +175,17 @@ async def app_callback(
             detail=f"GitHub App installation failed: {str(e)}",
         )
 
+@router.post("/create-test-token")
+async def create_test_token(username: str = "test_user", installation_id: int = 123):
+    """Create a test token for local development."""
+    payload = {
+        "sub": username,
+        "installation_id": installation_id,
+        "exp": datetime.utcnow() + timedelta(hours=1)
+    }
+    token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
+    return {"token": token}
+
 @router.post("/verify-token")
 async def verify_token(token: str):
     """Verify a JWT token and return user information."""

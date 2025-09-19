@@ -11,6 +11,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 from app.schemas.readme import ReadmeSection, ReadmeGenerationRequest
 from app.services.github_service import GitHubService
+from app.services.readme_prompts import ReadmePrompts
 from app.utils.markdown_utils import (
     extract_sections_from_markdown,
     merge_markdown_sections,
@@ -51,15 +52,11 @@ class GeminiService:
             max_output_tokens=max_tokens,
         )
 
+
     def _create_readme_prompt(
         self, repo_info: Dict[str, Any], sections: List[ReadmeSection]
     ) -> str:
         """Create a prompt for README generation based on repository information and requested sections."""
-        # Format sections for the prompt
-        section_descriptions = "\n".join(
-            [f"- {section.name}: {section.description}" for section in sections]
-        )
-
         # Add file structure and code samples if available
         file_structure = repo_info.get("file_structure", "Not provided")
         code_samples = ""
@@ -75,43 +72,7 @@ class GeminiService:
                 sample_content = sample_content.replace("{", "{{").replace("}", "}}")
                 code_samples += f"\nFile: {file_path}\n```\n{sample_content}\n```\n"
 
-        # Base prompt template
-        prompt = f"""
-        # TASK
-        You are an expert technical writer specializing in creating clear, professional, and comprehensive README documentation for software projects.
-
-        Create a README.md for a GitHub repository with the following information:
-
-        # REPOSITORY INFORMATION
-        - Name: {repo_info.get('name', 'Unknown')}
-        - Description: {repo_info.get('description', 'No description provided')}
-        - Primary Language: {repo_info.get('language', 'Not specified')}
-        - Topics/Tags: {', '.join(repo_info.get('topics', ['None']))}
-
-        # FILE STRUCTURE
-        {file_structure}
-
-        {code_samples}
-
-        # REQUIRED SECTIONS
-        The README should contain the following sections:
-        {section_descriptions}
-
-        # GUIDELINES
-        1. Use professional, clear, and concise language
-        2. Follow Markdown best practices with proper headings, lists, code blocks, etc.
-        3. Make the README comprehensive but not overly verbose
-        4. Include relevant badges where appropriate
-        5. For installation and usage sections, use real commands based on the repo's language/framework
-        6. Provide concrete examples where possible
-        7. Format the output as a valid Markdown document
-        8. Do not include sections that are not requested
-
-        # OUTPUT FORMAT
-        Respond with ONLY the README.md content in Markdown format, without any additional explanation or conversation.
-        """
-
-        return prompt
+        return ReadmePrompts.get_full_readme_prompt(repo_info, sections, file_structure, code_samples)
 
     async def generate_readme(
         self, request: ReadmeGenerationRequest, github_service: GitHubService
@@ -196,69 +157,31 @@ class GeminiService:
     ) -> str:
         """Generate README content section by section."""
         # Start with the header section (title, badges, short description)
-        header_prompt = f"""
-        Create only the header section of a README.md for the GitHub repository: {repo_info.get('name')}
-
-        Repository Information:
-        - Name: {repo_info.get('name', 'Unknown')}
-        - Description: {repo_info.get('description', 'No description provided')}
-        - Primary Language: {repo_info.get('language', 'Not specified')}
-
-        Include:
-        1. A title (H1 heading with the repository name)
-        2. A brief one-paragraph description of what the project does
-        3. Appropriate badges if needed (build status, version, license, etc.)
-
-        Format the output as Markdown. ONLY include the header section, no other sections.
-        """
-
+        header_prompt = ReadmePrompts.get_header_prompt(repo_info)
         header_prompt_template = ChatPromptTemplate.from_template(header_prompt)
         header_chain = header_prompt_template | self.llm | StrOutputParser()
         header_content = await header_chain.ainvoke({})
 
-        # Generate each section separately
+        # Generate each section separately using section-specific prompts
         sections_content = []
         for section in sorted(sections, key=lambda x: x.order):
-            section_prompt = f"""
-            Create ONLY the "{section.name}" section of a README.md for a GitHub repository.
+            # Get section-specific prompt
+            section_prompt = ReadmePrompts.get_section_specific_prompt(section, repo_info)
 
-            Repository Information:
-            - Name: {repo_info.get('name', 'Unknown')}
-            - Description: {repo_info.get('description', 'No description provided')}
-            - Primary Language: {repo_info.get('language', 'Not specified')}
-            - Topics/Tags: {', '.join(repo_info.get('topics', ['None']))}
-
-            Section Details:
-            - Section Name: {section.name}
-            - Section Description: {section.description}
-
-            Additional Context:
-            """
-
-            # Add relevant context based on section type
-            if section.name.lower() in [
-                "project structure",
-                "file structure",
-                "organization",
-            ]:
-                section_prompt += f"\nFile Structure:\n{repo_info.get('file_structure', 'Not available')}\n"
-
+            # Add code samples context if relevant for the section
             if section.name.lower() in ["usage", "examples", "getting started"]:
                 sample_files = repo_info.get("code_samples", {})
-                section_prompt += "\nCode Samples:\n"
-                for file_path, content in sample_files.items():
-                    # Escape curly braces in code content by doubling them
-                    escaped_content = (
-                        content[:500].replace("{", "{{").replace("}", "}}")
-                    )
-                    section_prompt += (
-                        f"\nFile: {file_path}\n```\n{escaped_content}...\n```\n"
-                    )
-
-            section_prompt += """
-            Format the output as Markdown. Start with a level-2 heading (##) for the section name.
-            ONLY include this specific section, do not include any other sections.
-            """
+                if sample_files:
+                    code_context = "\n\nCode Samples for Reference:\n"
+                    for file_path, content in sample_files.items():
+                        # Escape curly braces in code content by doubling them
+                        escaped_content = (
+                            content[:500].replace("{", "{{").replace("}", "}}")
+                        )
+                        code_context += (
+                            f"\nFile: {file_path}\n```\n{escaped_content}...\n```\n"
+                        )
+                    section_prompt += code_context
 
             section_prompt_template = ChatPromptTemplate.from_template(section_prompt)
             section_chain = section_prompt_template | self.llm | StrOutputParser()
