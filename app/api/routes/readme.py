@@ -12,12 +12,21 @@ from app.schemas.readme import (
     ReadmeSaveRequest,
     SectionTemplate,
     DEFAULT_SECTION_TEMPLATES,
+    ReadmeHistoryResponse,
+    ReadmeHistoryEntry,
 )
 from app.services.gemini_service import GeminiService
 from app.services.github_service import GitHubService
 from app.api.deps import get_github_service, get_gemini_service, get_current_user
 from app.exceptions import ReadmeGenerationException, GitHubException
 from app.utils.repository_validation import validate_repository_access
+from app.db.readme_history import (
+    save_readme_to_history,
+    get_user_readme_history,
+    get_readme_history_entry,
+    delete_readme_history_entry,
+    get_user_readme_stats,
+)
 
 router = APIRouter(prefix="/readme")
 
@@ -49,6 +58,17 @@ async def generate_readme(
         # Return the sections that were requested to be generated
         sections_generated = [section.name for section in request.sections]
 
+        # Save to history
+        repository_name = request.repository_url.split('/')[-1] if '/' in request.repository_url else request.repository_url
+        await save_readme_to_history(
+            username=username,
+            repository_url=request.repository_url,
+            repository_name=repository_name,
+            content=content,
+            sections_generated=sections_generated,
+            generation_type="new"  # Could be "improved" if existing README was found
+        )
+
         return ReadmeResponse(content=content, sections_generated=sections_generated)
     except Exception as e:
         if isinstance(e, HTTPException):
@@ -74,6 +94,16 @@ async def refine_readme(
         # For refinement, parse the content to see what sections are present
         section_pattern = re.compile(r"^#+\s+(.+)$", re.MULTILINE)
         sections_generated = section_pattern.findall(content)
+
+        # Save refined README to history
+        await save_readme_to_history(
+            username=username,
+            repository_url="manual-refinement",  # No specific repo for manual refinements
+            repository_name="Manual Refinement",
+            content=content,
+            sections_generated=sections_generated,
+            generation_type="refined"
+        )
 
         return ReadmeResponse(content=content, sections_generated=sections_generated)
     except Exception as e:
@@ -359,4 +389,147 @@ async def analyze_repository(
         raise ReadmeGenerationException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to analyze repository: {str(e)}",
+        )
+
+
+@router.get("/history", response_model=ReadmeHistoryResponse)
+async def get_readme_history(
+    page: int = 1,
+    page_size: int = 10,
+    repository_filter: Optional[str] = None,
+    username: str = Depends(get_current_user),
+):
+    """Get user's README generation history."""
+    try:
+        
+        if page < 1:
+            page = 1
+        if page_size < 1 or page_size > 50:
+            page_size = 10
+            
+        result = await get_user_readme_history(
+            username=username,
+            page=page,
+            page_size=page_size,
+            repository_filter=repository_filter
+        )
+        
+        return ReadmeHistoryResponse(**result)
+        
+    except Exception as e:
+        raise ReadmeGenerationException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get README history: {str(e)}",
+        )
+
+
+@router.get("/history/{entry_id}", response_model=ReadmeHistoryEntry)
+async def get_readme_history_entry(
+    entry_id: str,
+    username: str = Depends(get_current_user),
+):
+    """Get a specific README history entry."""
+    try:
+        
+        entry = await get_readme_history_entry(entry_id, username)
+        if not entry:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="README history entry not found"
+            )
+            
+        return entry
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise ReadmeGenerationException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get README history entry: {str(e)}",
+        )
+
+
+@router.post("/history/{entry_id}/download")
+async def download_readme_from_history(
+    entry_id: str,
+    filename: Optional[str] = None,
+    username: str = Depends(get_current_user),
+):
+    """Download a README from history."""
+    try:
+        
+        entry = await get_readme_history_entry(entry_id, username)
+        if not entry:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="README history entry not found"
+            )
+            
+        # Generate filename if not provided
+        if not filename:
+            filename = f"{entry.repository_name}_README_{entry.created_at.strftime('%Y%m%d_%H%M%S')}.md"
+        
+        # Create temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".md") as tmp:
+            tmp.write(entry.content.encode("utf-8"))
+            tmp_path = tmp.name
+
+        response = FileResponse(
+            path=tmp_path, 
+            media_type="text/markdown", 
+            filename=filename
+        )
+
+        response.background = lambda: os.unlink(tmp_path)
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise ReadmeGenerationException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to download README from history: {str(e)}",
+        )
+
+
+@router.delete("/history/{entry_id}")
+async def delete_readme_history_entry(
+    entry_id: str,
+    username: str = Depends(get_current_user),
+):
+    """Delete a README history entry."""
+    try:
+        
+        deleted = await delete_readme_history_entry(entry_id, username)
+        if not deleted:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="README history entry not found"
+            )
+            
+        return {"message": "README history entry deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise ReadmeGenerationException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete README history entry: {str(e)}",
+        )
+
+
+@router.get("/history/stats/overview")
+async def get_readme_stats(
+    username: str = Depends(get_current_user),
+):
+    """Get README generation statistics for the user."""
+    try:
+        
+        stats = await get_user_readme_stats(username)
+        return stats
+        
+    except Exception as e:
+        raise ReadmeGenerationException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get README statistics: {str(e)}",
         )
