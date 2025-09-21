@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
 
 class PyObjectId(str):
@@ -29,6 +29,7 @@ class UserModel(BaseModel):
     github_id: Optional[int] = None
     public_repos: Optional[int] = None
     company: Optional[str] = None
+    is_admin: bool = Field(default=False, description="Whether user has admin privileges")
     created_at: datetime = Field(default_factory=datetime.utcnow)
     last_login: datetime = Field(default_factory=datetime.utcnow)
 
@@ -69,6 +70,7 @@ def user_helper(user) -> Dict[str, Any]:
         "github_id": user.get("github_id"),
         "public_repos": user.get("public_repos"),
         "company": user.get("company"),
+        "is_admin": user.get("is_admin", False),
         "created_at": user["created_at"],
         "last_login": user["last_login"],
     }
@@ -83,4 +85,42 @@ def session_helper(session) -> Dict[str, Any]:
         "installation_id": session.get("installation_id"),
         "created_at": session["created_at"],
         "expires_at": session["expires_at"],
+    }
+
+
+class FeedbackModel(BaseModel):
+    """Feedback model for MongoDB."""
+
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    username: str
+    readme_history_id: str
+    repository_name: str
+    rating: str
+    helpful_sections: Optional[List[str]] = None
+    problematic_sections: Optional[List[str]] = None
+    general_comments: Optional[str] = None
+    suggestions: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        validate_by_name = True
+        json_encoders = {
+            datetime: lambda dt: dt.isoformat(),
+            PyObjectId: lambda oid: str(oid),
+        }
+
+
+def feedback_helper(feedback) -> Dict[str, Any]:
+    """Helper function to convert MongoDB feedback to dict."""
+    return {
+        "id": str(feedback["_id"]),
+        "username": feedback["username"],
+        "readme_history_id": feedback["readme_history_id"],
+        "repository_name": feedback["repository_name"],
+        "rating": feedback["rating"],
+        "helpful_sections": feedback.get("helpful_sections", []),
+        "problematic_sections": feedback.get("problematic_sections", []),
+        "general_comments": feedback.get("general_comments", ""),
+        "suggestions": feedback.get("suggestions", ""),
+        "created_at": feedback["created_at"],
     }

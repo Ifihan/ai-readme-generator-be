@@ -75,3 +75,15 @@ async def get_github_service(
 def get_gemini_service() -> GeminiService:
     """Get Gemini service instance."""
     return GeminiService()
+
+
+async def get_admin_user(
+    user: Dict[str, Any] = Depends(get_db_user),
+) -> str:
+    """Get current user and verify admin privileges."""
+    if not user.get("is_admin", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required for this operation"
+        )
+    return user["username"]
