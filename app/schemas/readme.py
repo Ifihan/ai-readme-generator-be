@@ -1,6 +1,7 @@
 from typing import List, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime
+from enum import Enum
 
 
 class ReadmeSection(BaseModel):
@@ -319,5 +320,135 @@ class ReadmeHistoryResponse(BaseModel):
                 "total_count": 5,
                 "page": 1,
                 "page_size": 10
+            }
+        }
+
+
+class FeedbackRating(str, Enum):
+    """Enum for feedback ratings."""
+    EXCELLENT = "excellent"
+    GOOD = "good"
+    AVERAGE = "average"
+    POOR = "poor"
+    TERRIBLE = "terrible"
+
+
+class FeedbackCreateRequest(BaseModel):
+    """Model for creating feedback on a README generation."""
+    
+    readme_history_id: str = Field(..., description="ID of the README history entry")
+    rating: FeedbackRating = Field(..., description="Overall rating of the generated README")
+    helpful_sections: Optional[List[str]] = Field(default=[], description="Sections that were helpful")
+    problematic_sections: Optional[List[str]] = Field(default=[], description="Sections that had issues")
+    general_comments: Optional[str] = Field(default="", description="General feedback comments")
+    suggestions: Optional[str] = Field(default="", description="Suggestions for improvement")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "readme_history_id": "64f8b2a1c9e1234567890abc",
+                "rating": "good",
+                "helpful_sections": ["Introduction", "Installation"],
+                "problematic_sections": ["Usage"],
+                "general_comments": "Overall good README but usage examples could be clearer",
+                "suggestions": "Add more code examples in the Usage section"
+            }
+        }
+
+
+class FeedbackResponse(BaseModel):
+    """Model for feedback response."""
+    
+    id: str = Field(..., description="Unique identifier for the feedback")
+    username: str = Field(..., description="Username of the user who provided feedback")
+    readme_history_id: str = Field(..., description="ID of the README history entry")
+    repository_name: str = Field(..., description="Repository name for display")
+    rating: FeedbackRating = Field(..., description="Overall rating of the generated README")
+    helpful_sections: List[str] = Field(..., description="Sections that were helpful")
+    problematic_sections: List[str] = Field(..., description="Sections that had issues")
+    general_comments: str = Field(..., description="General feedback comments")
+    suggestions: str = Field(..., description="Suggestions for improvement")
+    created_at: datetime = Field(..., description="When the feedback was created")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "id": "64f8b2a1c9e1234567890def",
+                "username": "john_doe",
+                "readme_history_id": "64f8b2a1c9e1234567890abc",
+                "repository_name": "awesome-project",
+                "rating": "good",
+                "helpful_sections": ["Introduction", "Installation"],
+                "problematic_sections": ["Usage"],
+                "general_comments": "Overall good README but usage examples could be clearer",
+                "suggestions": "Add more code examples in the Usage section",
+                "created_at": "2024-01-15T10:35:00Z"
+            }
+        }
+
+
+class FeedbackListResponse(BaseModel):
+    """Model for feedback list response."""
+    
+    feedback: List[FeedbackResponse] = Field(..., description="List of feedback entries")
+    total_count: int = Field(..., description="Total number of feedback entries")
+    page: int = Field(..., description="Current page number")
+    page_size: int = Field(..., description="Number of entries per page")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "feedback": [
+                    {
+                        "id": "64f8b2a1c9e1234567890def",
+                        "username": "john_doe",
+                        "readme_history_id": "64f8b2a1c9e1234567890abc",
+                        "repository_name": "awesome-project",
+                        "rating": "good",
+                        "helpful_sections": ["Introduction"],
+                        "problematic_sections": ["Usage"],
+                        "general_comments": "Good overall",
+                        "suggestions": "More examples needed",
+                        "created_at": "2024-01-15T10:35:00Z"
+                    }
+                ],
+                "total_count": 5,
+                "page": 1,
+                "page_size": 10
+            }
+        }
+
+
+class FeedbackStats(BaseModel):
+    """Model for feedback statistics."""
+    
+    total_feedback: int = Field(..., description="Total number of feedback entries")
+    average_rating: float = Field(..., description="Average rating across all feedback")
+    rating_distribution: dict = Field(..., description="Distribution of ratings")
+    most_helpful_sections: List[dict] = Field(..., description="Most frequently helpful sections")
+    most_problematic_sections: List[dict] = Field(..., description="Most frequently problematic sections")
+    recent_feedback_count: int = Field(..., description="Feedback count in last 30 days")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "total_feedback": 42,
+                "average_rating": 4.2,
+                "rating_distribution": {
+                    "excellent": 10,
+                    "good": 20,
+                    "average": 8,
+                    "poor": 3,
+                    "terrible": 1
+                },
+                "most_helpful_sections": [
+                    {"section": "Introduction", "count": 35},
+                    {"section": "Installation", "count": 30}
+                ],
+                "most_problematic_sections": [
+                    {"section": "Usage", "count": 15},
+                    {"section": "API Reference", "count": 8}
+                ],
+                "recent_feedback_count": 12
             }
         }

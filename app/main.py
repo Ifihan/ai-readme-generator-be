@@ -4,7 +4,7 @@ from fastapi.responses import RedirectResponse
 
 from app.exceptions import add_exception_handlers
 from app.config import settings
-from app.api.routes import auth, readme, webhooks
+from app.api.routes import auth, readme, webhooks, feedback, admin
 from app.middlewares import SessionMiddleware
 from app.db.mongodb import connect_to_mongodb, close_mongodb_connection
 
@@ -66,6 +66,12 @@ def create_application() -> FastAPI:
     )
     application.include_router(
         webhooks.router, prefix=settings.API_V1_STR, tags=["Webhooks"]
+    )
+    application.include_router(
+        feedback.router, prefix=settings.API_V1_STR, tags=["Feedback"]
+    )
+    application.include_router(
+        admin.router, prefix=settings.API_V1_STR, tags=["Admin"]
     )
 
     add_exception_handlers(application)

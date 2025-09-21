@@ -15,7 +15,7 @@ async def save_readme_to_history(
     generation_type: str = "new"
 ) -> str:
     """Save a generated README to user's history."""
-    db = await get_database()
+    db = get_database()
     collection = db.readme_history
     
     history_entry = {
@@ -40,7 +40,7 @@ async def get_user_readme_history(
     repository_filter: Optional[str] = None
 ) -> Dict[str, Any]:
     """Get paginated README history for a user."""
-    db = await get_database()
+    db = get_database()
     collection = db.readme_history
     
     # Build query
@@ -79,7 +79,7 @@ async def get_readme_history_entry(entry_id: str, username: str) -> Optional[Rea
     """Get a specific README history entry by ID."""
     from bson import ObjectId
     
-    db = await get_database()
+    db = get_database()
     collection = db.readme_history
     
     try:
@@ -103,7 +103,7 @@ async def delete_readme_history_entry(entry_id: str, username: str) -> bool:
     """Delete a README history entry."""
     from bson import ObjectId
     
-    db = await get_database()
+    db = get_database()
     collection = db.readme_history
     
     try:
@@ -118,7 +118,7 @@ async def delete_readme_history_entry(entry_id: str, username: str) -> bool:
 
 async def get_user_readme_stats(username: str) -> Dict[str, Any]:
     """Get README generation statistics for a user."""
-    db = await get_database()
+    db = get_database()
     collection = db.readme_history
     
     # Basic counts
