@@ -272,7 +272,7 @@ class ReadmeHistoryEntry(BaseModel):
     username: str = Field(..., description="Username of the user who generated the README")
     repository_url: str = Field(..., description="Repository URL for which README was generated")
     repository_name: str = Field(..., description="Repository name for display")
-    content: str = Field(..., description="Generated README content")
+    content: Optional[str] = Field(None, description="Generated README content")
     sections_generated: List[str] = Field(..., description="List of sections that were generated")
     generation_type: str = Field(..., description="Type of generation (new, improved, refined)")
     created_at: datetime = Field(..., description="When the README was generated")
