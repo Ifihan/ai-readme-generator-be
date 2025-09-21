@@ -54,12 +54,8 @@ async def get_user_readme_history(
     # Get total count
     total_count = await collection.count_documents(query)
     
-    # Get paginated results (excluding content for list view)
-    projection = {
-        "content": 0  # Exclude content from list view for performance
-    }
-    
-    cursor = collection.find(query, projection).sort("created_at", DESCENDING).skip(skip).limit(page_size)
+    # Get paginated results (including content for UI)
+    cursor = collection.find(query).sort("created_at", DESCENDING).skip(skip).limit(page_size)
     entries = await cursor.to_list(length=page_size)
     
     # Convert ObjectId to string
