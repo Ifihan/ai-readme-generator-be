@@ -24,7 +24,8 @@ from app.db.readme_history import (
     save_readme_to_history,
     get_user_readme_history,
     get_readme_history_entry,
-    delete_readme_history_entry,
+    delete_readme_history_entry as delete_history_service,
+    clear_all_readme_history,
     get_user_readme_stats,
 )
 
@@ -499,22 +500,40 @@ async def delete_readme_history_entry(
 ):
     """Delete a README history entry."""
     try:
-        
-        deleted = await delete_readme_history_entry(entry_id, username)
+
+        deleted = await delete_history_service(entry_id, username)
         if not deleted:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="README history entry not found"
             )
-            
+
         return {"message": "README history entry deleted successfully"}
-        
+
     except HTTPException:
         raise
     except Exception as e:
         raise ReadmeGenerationException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to delete README history entry: {str(e)}",
+        )
+
+
+@router.delete("/history")
+async def clear_readme_history(
+    username: str = Depends(get_current_user),
+):
+    """Clear all README history entries for the current user."""
+    try:
+        deleted_count = await clear_all_readme_history(username)
+        return {
+            "message": f"Successfully cleared {deleted_count} history entries",
+            "deleted_count": deleted_count
+        }
+    except Exception as e:
+        raise ReadmeGenerationException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to clear README history: {str(e)}",
         )
 
 
