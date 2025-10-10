@@ -72,7 +72,8 @@ class ReadmeGenerationRequest(BaseModel):
 
 class ReadmeResponse(BaseModel):
     """Model for a README generation response."""
-
+    
+    entry_id: Optional[str] = Field(default=None, description="Generated README content in Markdown format")
     content: str = Field(..., description="Generated README content in Markdown format")
     sections_generated: List[str] = Field(
         ..., description="List of sections that were requested to be generated"
