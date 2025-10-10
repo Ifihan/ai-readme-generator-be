@@ -61,7 +61,7 @@ async def generate_readme(
 
         # Save to history
         repository_name = request.repository_url.split('/')[-1] if '/' in request.repository_url else request.repository_url
-        await save_readme_to_history(
+        entry_id = await save_readme_to_history(
             username=username,
             repository_url=request.repository_url,
             repository_name=repository_name,
@@ -70,7 +70,7 @@ async def generate_readme(
             generation_type="new"  # Could be "improved" if existing README was found
         )
 
-        return ReadmeResponse(content=content, sections_generated=sections_generated)
+        return ReadmeResponse(content=content, sections_generated=sections_generated, entry_id=entry_id)
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
