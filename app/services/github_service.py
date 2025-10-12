@@ -205,96 +205,122 @@ class GitHubService:
         }
 
     async def get_repository_file_structure(
-        self, repo_url: str, path: str = "", max_depth: int = 3, max_files: int = 100
+        self, repo_url: str, max_depth: int = 2, folders_only: bool = True
     ) -> str:
-        """Get file structure of a GitHub repository with size limits."""
-        owner, repo = self._parse_repo_url(repo_url)
-        default_branch = (await self.get_repository_details(repo_url)).get(
-            "default_branch", "main"
-        )
+        """Get file structure of a GitHub repository using Git Tree API.
 
-        # Get contents of the repository at the specified path
+        Args:
+            repo_url: Repository URL
+            max_depth: Maximum depth to traverse (default 2 for high-level overview)
+            folders_only: If True, only show folders (except root-level files)
+        """
+        owner, repo = self._parse_repo_url(repo_url)
+        repo_details = await self.get_repository_details(repo_url)
+        default_branch = repo_details.get("default_branch", "main")
+
+        # Get tree using Git Tree API (single API call)
         try:
-            contents = await self._github_request(
-                f"/repos/{owner}/{repo}/contents/{path}"
+            tree_data = await self._github_request(
+                f"/repos/{owner}/{repo}/git/trees/{default_branch}?recursive=1"
             )
+            files = tree_data.get("tree", [])
         except ValueError as e:
-            logger.error(f"Error getting repository contents: {str(e)}")
+            logger.error(f"Error getting repository tree: {str(e)}")
             return "Unable to retrieve file structure"
 
-        if not isinstance(contents, list):
-            return "Invalid repository path or structure"
+        # Build tree structure from flat file list
+        structure = self._build_tree_structure(files, max_depth, folders_only)
 
-        # Function to recursively build file structure with limits
-        async def build_structure(
-            items, prefix="", is_last=None, current_depth=1, file_count=0
-        ):
-            if is_last is None:
-                is_last = [True]
+        return structure
+
+    def _build_tree_structure(self, files: List[Dict], max_depth: int = 2, folders_only: bool = True) -> str:
+        """Build a tree structure from a flat list of files.
+
+        Args:
+            files: List of file/directory objects from Git Tree API
+            max_depth: Maximum depth to traverse
+            folders_only: If True, only show folders (except root-level files)
+        """
+        from collections import defaultdict
+
+        # Organize items by their parent directory
+        tree = defaultdict(lambda: {"files": [], "dirs": []})
+
+        for item in files:
+            path = item["path"]
+            item_type = item["type"]
+            path_parts = path.split("/")
+            depth = len(path_parts)
+
+            # Skip items beyond max_depth
+            if depth > max_depth:
+                continue
+
+            # Determine parent directory
+            if depth == 1:
+                parent = ""
+                name = path_parts[0]
+            else:
+                parent = "/".join(path_parts[:-1])
+                name = path_parts[-1]
+
+            # Add to tree
+            if item_type == "tree":
+                # It's a directory
+                if parent == "" or parent.count("/") < max_depth - 1:
+                    tree[parent]["dirs"].append(name)
+            elif item_type == "blob":
+                # It's a file
+                if depth == 1:
+                    # Root-level file - always include
+                    tree[parent]["files"].append(name)
+                elif not folders_only and parent.count("/") < max_depth - 1:
+                    # Non-root file - only include if not folders_only
+                    tree[parent]["files"].append(name)
+
+        # Build the visual tree
+        def build_visual_tree(path: str = "", prefix: str = "", depth: int = 0) -> List[str]:
+            if depth >= max_depth:
+                return []
 
             result = []
+            items = []
+
+            # Get directories and files at this level
+            dirs = sorted(set(tree[path]["dirs"]))
+            files_list = sorted(set(tree[path]["files"]))
+
+            # Combine dirs first, then files
+            for d in dirs:
+                items.append(("dir", d))
+            for f in files_list:
+                items.append(("file", f))
+
             total = len(items)
+            for i, (item_type, item_name) in enumerate(items):
+                is_last = i == total - 1
 
-            # Sort items: directories first, then files alphabetically
-            items.sort(key=lambda x: (x["type"] != "dir", x["name"].lower()))
-
-            for i, item in enumerate(items):
-                # Check if we've reached the file limit
-                if file_count >= max_files:
-                    if i < total - 1:
-                        result.append(f"{prefix}... ({total - i} more items not shown)")
-                    break
-
-                is_last_item = i == total - 1
-                current_prefix = prefix
-
-                # Build the line prefix
-                if prefix:
-                    line_prefix = prefix + ("└── " if is_last_item else "├── ")
+                # Build the line
+                if prefix == "":
+                    connector = ""
                 else:
-                    line_prefix = ""
+                    connector = "└── " if is_last else "├── "
 
-                # Add the item
-                result.append(f"{line_prefix}{item['name']}")
+                # Add trailing slash for directories
+                display_name = f"{item_name}/" if item_type == "dir" else item_name
+                result.append(f"{prefix}{connector}{display_name}")
 
-                # If file, increment the file counter
-                if item["type"] == "file":
-                    file_count += 1
+                # If it's a directory, recursively add its contents
+                if item_type == "dir" and depth + 1 < max_depth:
+                    new_path = f"{path}/{item_name}" if path else item_name
+                    new_prefix = prefix + ("    " if is_last else "│   ")
+                    sub_result = build_visual_tree(new_path, new_prefix, depth + 1)
+                    result.extend(sub_result)
 
-                # If directory and not at max depth, get its contents recursively
-                if item["type"] == "dir" and current_depth < max_depth:
-                    next_prefix = prefix + ("    " if is_last_item else "│   ")
-                    try:
-                        subcontents = await self._github_request(item["url"])
-                        sub_result, file_count = await build_structure(
-                            subcontents,
-                            next_prefix,
-                            current_depth=current_depth + 1,
-                            file_count=file_count,
-                        )
-                        result.extend(sub_result)
-                    except ValueError:
-                        result.append(f"{next_prefix}(Error loading contents)")
-                elif item["type"] == "dir" and current_depth >= max_depth:
-                    next_prefix = prefix + ("    " if is_last_item else "│   ")
-                    result.append(
-                        f"{next_prefix}... (directory content not shown due to depth limit)"
-                    )
+            return result
 
-            return result, file_count
-
-        structure_lines, _ = await build_structure(contents)
-
-        # Add repository size information
-        try:
-            repo_data = await self._github_request(f"/repos/{owner}/{repo}")
-            repo_size = repo_data.get("size", 0)  # Size in KB
-            size_info = f"\nRepository size: {self._format_size(repo_size * 1024)}"
-            structure_lines.append(size_info)
-        except Exception:
-            pass
-
-        return "\n".join(structure_lines)
+        structure_lines = build_visual_tree()
+        return "\n".join(structure_lines) if structure_lines else "No files found"
 
     def _format_size(self, size_bytes: int) -> str:
         """Format file size in human-readable format."""

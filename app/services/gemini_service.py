@@ -1,14 +1,11 @@
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 import logging
 import os
 import re
-from langchain.prompts import ChatPromptTemplate, PromptTemplate
+from langchain.prompts import ChatPromptTemplate
 from langchain.schema import StrOutputParser
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
 from langchain.memory import ConversationBufferMemory
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-
 from app.schemas.readme import ReadmeSection, ReadmeGenerationRequest
 from app.services.github_service import GitHubService
 from app.services.readme_prompts import ReadmePrompts
@@ -20,6 +17,7 @@ from app.exceptions import GeminiApiException
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
 
 class GeminiService:
     """Service for interacting with Google's Gemini API through LangChain."""
@@ -52,43 +50,23 @@ class GeminiService:
             max_output_tokens=max_tokens,
         )
 
-
-    def _create_readme_prompt(
-        self, repo_info: Dict[str, Any], sections: List[ReadmeSection]
-    ) -> str:
-        """Create a prompt for README generation based on repository information and requested sections."""
-        # Add file structure and code samples if available
-        file_structure = repo_info.get("file_structure", "Not provided")
-        code_samples = ""
-
-        if "code_samples" in repo_info:
-            code_samples = "\nCode Samples:\n"
-            for file_path, content in repo_info["code_samples"].items():
-                # Limit content size to avoid token limits
-                # Escape curly braces in code content by doubling them
-                sample_content = (
-                    content[:500] + "..." if len(content) > 500 else content
-                )
-                sample_content = sample_content.replace("{", "{{").replace("}", "}}")
-                code_samples += f"\nFile: {file_path}\n```\n{sample_content}\n```\n"
-
-        return ReadmePrompts.get_full_readme_prompt(repo_info, sections, file_structure, code_samples)
-
     async def generate_readme(
         self, request: ReadmeGenerationRequest, github_service: GitHubService
     ) -> str:
         """Generate a README for a GitHub repository with automatic fallback handling."""
         # Get repository information
         repo_info = await github_service.get_repository_details(request.repository_url)
-        
+
         # Check for existing README first
         owner, repo = github_service._parse_repo_url(request.repository_url)
         existing_readme = await github_service.get_existing_readme(owner, repo)
-        
+
         # If existing README found, improve it instead of creating from scratch
         if existing_readme["exists"] and existing_readme["content"]:
-            logger.info(f"Found existing README ({existing_readme['filename']}) - will improve it")
-            
+            logger.info(
+                f"Found existing README ({existing_readme['filename']}) - will improve it"
+            )
+
             # Create improvement instructions based on requested sections
             section_names = [section.name for section in request.sections]
             improvement_feedback = f"""
@@ -110,14 +88,14 @@ class GeminiService:
             - Only link to license files that actually exist
             - Follow modern README best practices
             """
-            
-            return await self.refine_readme(existing_readme["content"], improvement_feedback)
+
+            return await self.refine_readme(
+                existing_readme["content"], improvement_feedback
+            )
 
         # Get file structure if needed
         if any(
-            section.name.lower()
-            in ["project structure", "file structure", "organization"]
-            for section in request.sections
+            section.name.lower() == "project structure" for section in request.sections
         ):
             file_structure = await github_service.get_repository_file_structure(
                 request.repository_url
@@ -132,97 +110,49 @@ class GeminiService:
             code_samples = await github_service.get_code_samples(request.repository_url)
             repo_info["code_samples"] = code_samples
 
-        # First attempt: Try with default token limit
-        try:
-            return await self._generate_readme_full(repo_info, request.sections)
-        except Exception as e:
-            logger.warning(
-                f"Initial README generation failed: {str(e)}. Trying with increased token limit..."
-            )
+        # Generate README section-by-section
+        return await self._generate_readme_by_section(repo_info, request.sections)
 
-            # Second attempt: Try with increased token limit
-            try:
-                # Create a higher-capacity model
-                original_llm = self.llm
-                self.llm = self._create_llm(self.max_fallback_tokens)
-
-                result = await self._generate_readme_full(repo_info, request.sections)
-
-                # Restore original model
-                self.llm = original_llm
-                return result
-            except Exception as e2:
-                logger.warning(
-                    f"Increased token limit attempt failed: {str(e2)}. Falling back to section-by-section generation..."
-                )
-
-                # Third attempt: Section-by-section generation
-                # Restore original model if needed
-                self.llm = original_llm
-                return await self._generate_readme_by_section(
-                    repo_info, request.sections
-                )
-
-    async def _generate_readme_full(
-        self, repo_info: Dict[str, Any], sections: List[ReadmeSection]
+    def _filter_to_requested_sections(
+        self, content: str, sections: List[ReadmeSection]
     ) -> str:
-        """Generate a complete README in one call."""
-        # Create prompt for README generation
-        prompt = self._create_readme_prompt(repo_info, sections)
-
-        # Create chain with prompt template
-        prompt_template = ChatPromptTemplate.from_template(prompt)
-        chain = prompt_template | self.llm | StrOutputParser()
-
-        # Generate README content
-        readme_content = await chain.ainvoke({})
-
-        # Check for potential truncation
-        if self._check_for_truncation(readme_content, sections):
-            logger.warning("Potential truncation detected in README generation")
-            raise ValueError("Potential truncation detected")
-
-        # Filter content to only include requested sections
-        filtered_content = self._filter_to_requested_sections(readme_content, sections)
-
-        return filtered_content
-
-    def _filter_to_requested_sections(self, content: str, sections: List[ReadmeSection]) -> str:
         """Filter README content to only include requested sections."""
         requested_section_names = {section.name.lower() for section in sections}
-        
+
         # Split content into lines for processing
-        lines = content.split('\n')
+        lines = content.split("\n")
         filtered_lines = []
         current_section = None
         include_current_section = True
-        
+
         for line in lines:
             # Check if this line is a heading
-            if line.strip().startswith('#'):
+            if line.strip().startswith("#"):
                 # Extract section name from heading
-                heading_text = line.strip().lstrip('#').strip()
+                heading_text = line.strip().lstrip("#").strip()
                 current_section = heading_text.lower()
-                
+
                 # Check if this section was requested
                 include_current_section = any(
                     req_section in current_section or current_section in req_section
                     for req_section in requested_section_names
                 )
-                
+
                 if include_current_section:
                     filtered_lines.append(line)
             else:
                 # Include content only if we're in a requested section
                 if include_current_section:
                     filtered_lines.append(line)
-        
+
         # If no sections were found or content is too short, return original
         if len(filtered_lines) < 5:
-            logger.warning("Section filtering resulted in very short content, returning original")
+            logger.warning(
+                "Section filtering resulted in very short content, returning original"
+            )
             return content
-            
-        return '\n'.join(filtered_lines)
+
+        return "\n".join(filtered_lines)
 
     async def _generate_readme_by_section(
         self, repo_info: Dict[str, Any], sections: List[ReadmeSection]
@@ -237,8 +167,22 @@ class GeminiService:
         # Generate each section separately using section-specific prompts
         sections_content = []
         for section in sorted(sections, key=lambda x: x.order):
-            # Get section-specific prompt
-            section_prompt = ReadmePrompts.get_section_specific_prompt(section, repo_info)
+            # Handle project structure section without AI - just use the tree directly
+            if section.name.lower() == "project structure":
+                file_structure = repo_info.get("file_structure", "")
+                if file_structure:
+                    section_content = f"## {section.name}\n\n```\n{file_structure}\n```"
+                    sections_content.append(section_content)
+                else:
+                    sections_content.append(
+                        f"\n## {section.name}\n\n*File structure not available.*\n"
+                    )
+                continue
+
+            # Get section-specific prompt for AI-generated sections
+            section_prompt = ReadmePrompts.get_section_specific_prompt(
+                section, repo_info
+            )
 
             # Add code samples context if relevant for the section
             if section.name.lower() in ["usage", "examples", "getting started"]:
@@ -270,44 +214,11 @@ class GeminiService:
 
         # Combine all sections
         full_content = header_content + "\n\n" + "\n\n".join(sections_content)
-        
+
         # Apply filtering to ensure only requested sections are included
         filtered_content = self._filter_to_requested_sections(full_content, sections)
-        
+
         return filtered_content
-
-    def _check_for_truncation(
-        self, content: str, sections: List[ReadmeSection]
-    ) -> bool:
-        """Check if the generated content appears to be truncated."""
-        # Check for common truncation indicators
-        truncation_indicators = [
-            content.endswith("..."),
-            content.endswith("…"),
-            content.endswith("to be continued"),
-            content.endswith("continued"),
-        ]
-
-        if any(truncation_indicators):
-            return True
-
-        # Check if all expected sections are present
-        required_section_names = [
-            section.name for section in sections if section.required
-        ]
-
-        # Extract section headings from content using regex
-        section_pattern = re.compile(r"^#+\s+(.+)$", re.MULTILINE)
-        found_sections = section_pattern.findall(content)
-
-        # Check if all required sections are present
-        for required_section in required_section_names:
-            if not any(
-                required_section.lower() in found.lower() for found in found_sections
-            ):
-                return True
-
-        return False
 
     async def refine_readme(self, readme_content: str, feedback: str) -> str:
         """Refine a generated README based on user feedback with fallback mechanism."""
@@ -516,158 +427,3 @@ class GeminiService:
         -->"""
 
         return note + "\n\n" + readme_content
-
-    async def analyze_repository_for_readme(
-        self,
-        repo_info: Dict[str, Any],
-        repo_files: List[Dict[str, Any]],
-        key_files_content: Dict[str, str],
-    ) -> Dict[str, Any]:
-        """Analyze a repository to determine the best README structure."""
-        try:
-            # Create context for the analysis prompt
-            file_structure = self._format_file_structure(repo_files)
-            key_files_summary = self._summarize_key_files(key_files_content)
-
-            context = {
-                "repo_name": repo_info.get("name", ""),
-                "repo_description": repo_info.get(
-                    "description", "No description provided"
-                ),
-                "file_structure": file_structure,
-                "key_files_summary": key_files_summary,
-                "programming_language": repo_info.get("language", "Not specified"),
-            }
-
-            # Create the analysis prompt
-            prompt = f"""
-            You are an expert at analyzing GitHub repositories and determining the best structure for README documentation.
-
-            # REPOSITORY INFORMATION
-            - Name: {context['repo_name']}
-            - Description: {context['repo_description']}
-            - Programming Language: {context['programming_language']}
-
-            # FILE STRUCTURE
-            {context['file_structure']}
-
-            # KEY FILES SUMMARY
-            {context['key_files_summary']}
-
-            # TASK
-            Analyze this repository and determine the most appropriate sections for a comprehensive README.md file.
-
-            ## ANALYSIS GUIDELINES
-            1. Consider the programming language and common documentation practices for that ecosystem
-            2. Look at the file structure to understand project organization and components
-            3. Consider the purpose of the repository (library, application, framework, etc.)
-            4. Identify sections that would be most useful for users of this project
-
-            # OUTPUT FORMAT
-            Provide your analysis in this format:
-
-            ## Recommended Sections:
-            - section_id_1: Section Title 1
-            - section_id_2: Section Title 2
-            (etc.)
-
-            ## Custom Sections:
-            - Additional Section Title 1
-            - Additional Section Title 2
-            (etc.)
-
-            ## Analysis:
-            Brief explanation of why these sections are recommended for this repository.
-            """
-
-            # Create the analysis chain
-            prompt_template = ChatPromptTemplate.from_template(prompt)
-            chain = prompt_template | self.llm | StrOutputParser()
-
-            # Execute the chain to analyze the repository
-            response = await chain.ainvoke({})
-
-            # Extract recommended sections
-            recommended_sections = []
-            custom_sections = []
-
-            # Parse the response to extract recommended sections
-            lines = response.strip().split("\n")
-            current_section = None
-
-            for line in lines:
-                line = line.strip()
-                if line.startswith("## Recommended Sections:"):
-                    current_section = "recommended"
-                elif line.startswith("## Custom Sections:"):
-                    current_section = "custom"
-                elif line.startswith("## Analysis:"):
-                    current_section = "analysis"
-                elif line.startswith("- ") and current_section == "recommended":
-                    section = line[2:].strip()
-                    if ":" in section:
-                        section_id, section_name = section.split(":", 1)
-                        recommended_sections.append(
-                            {
-                                "id": section_id.strip(),
-                                "name": section_name.strip(),
-                            }
-                        )
-                elif line.startswith("- ") and current_section == "custom":
-                    section = line[2:].strip()
-                    custom_sections.append(section)
-
-            return {
-                "recommended_sections": recommended_sections,
-                "custom_sections": custom_sections,
-                "analysis": response,
-            }
-
-        except Exception as e:
-            logger.error(f"Failed to analyze repository: {str(e)}")
-            raise GeminiApiException(detail=f"Failed to analyze repository: {str(e)}")
-
-    def _format_file_structure(self, files: List[Dict[str, Any]]) -> str:
-        """Format the file structure for inclusion in the prompt."""
-        if not files:
-            return "No files available"
-
-        # Create a formatted string representation of the file structure
-        file_list = []
-        for file in files:
-            file_path = file.get("path", "")
-            file_type = file.get("type", "")
-            file_size = file.get("size", 0)
-
-            if file_type == "dir":
-                file_list.append(f"Directory: {file_path}")
-            else:
-                file_list.append(f"File: {file_path} ({file_size} bytes)")
-
-        return "\n".join(file_list)
-
-    def _summarize_key_files(self, key_files: Dict[str, str]) -> str:
-        """Summarize key files content for inclusion in the prompt."""
-        if not key_files:
-            return "No key files available"
-
-        # Create a summary of key files
-        summary_parts = []
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=0)
-
-        for file_key, content in key_files.items():
-            if not content:
-                continue
-
-            # For large files, just include the first chunk
-            chunks = text_splitter.split_text(content)
-            if chunks:
-                summary_parts.append(f"### {file_key.upper()} FILE")
-                summary_parts.append(chunks[0])
-                if len(chunks) > 1:
-                    summary_parts.append("(content truncated for brevity)")
-
-        if not summary_parts:
-            return "No key file content available"
-
-        return "\n\n".join(summary_parts)

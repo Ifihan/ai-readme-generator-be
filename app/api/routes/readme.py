@@ -31,10 +31,12 @@ from app.db.readme_history import (
 
 router = APIRouter(prefix="/readme")
 
+
 @router.get("/sections", response_model=List[SectionTemplate])
 async def get_section_templates():
     """Get available README section templates."""
     return DEFAULT_SECTION_TEMPLATES
+
 
 @router.post("/generate", response_model=ReadmeResponse)
 async def generate_readme(
@@ -60,17 +62,23 @@ async def generate_readme(
         sections_generated = [section.name for section in request.sections]
 
         # Save to history
-        repository_name = request.repository_url.split('/')[-1] if '/' in request.repository_url else request.repository_url
+        repository_name = (
+            request.repository_url.split("/")[-1]
+            if "/" in request.repository_url
+            else request.repository_url
+        )
         entry_id = await save_readme_to_history(
             username=username,
             repository_url=request.repository_url,
             repository_name=repository_name,
             content=content,
             sections_generated=sections_generated,
-            generation_type="new"  # Could be "improved" if existing README was found
+            generation_type="new",  # Could be "improved" if existing README was found
         )
 
-        return ReadmeResponse(content=content, sections_generated=sections_generated, entry_id=entry_id)
+        return ReadmeResponse(
+            content=content, sections_generated=sections_generated, entry_id=entry_id
+        )
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
@@ -80,6 +88,7 @@ async def generate_readme(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"README generation failed: {str(e)}",
         )
+
 
 @router.post("/refine", response_model=ReadmeResponse)
 async def refine_readme(
@@ -103,7 +112,7 @@ async def refine_readme(
             repository_name="Manual Refinement",
             content=content,
             sections_generated=sections_generated,
-            generation_type="refined"
+            generation_type="refined",
         )
 
         return ReadmeResponse(content=content, sections_generated=sections_generated)
@@ -114,6 +123,7 @@ async def refine_readme(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"README refinement failed: {str(e)}",
         )
+
 
 @router.post("/save", status_code=status.HTTP_201_CREATED)
 async def save_readme_to_github(
@@ -152,6 +162,7 @@ async def save_readme_to_github(
             detail=f"Failed to save README: {str(e)}",
         )
 
+
 @router.post("/download", status_code=status.HTTP_200_OK)
 async def download_readme(
     content: str, filename: str = "README.md", username: str = Depends(get_current_user)
@@ -176,6 +187,7 @@ async def download_readme(
             detail=f"Failed to download README: {str(e)}",
         )
 
+
 @router.get("/preview/{owner}/{repo}")
 async def preview_generated_readme(
     owner: str,
@@ -186,8 +198,7 @@ async def preview_generated_readme(
     username: str = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """
-    Preview what sections would be included and analyze repository structure.
-    This is a helper endpoint for development and debugging.
+    Returns repository details and available section templates.
     """
     try:
         repo_url = f"{owner}/{repo}"
@@ -200,14 +211,6 @@ async def preview_generated_readme(
 
         code_samples = await github_service.get_code_samples(repo_url)
 
-        repo_info = {
-            **repo_details,
-            "file_structure": file_structure,
-            "code_samples": code_samples,
-        }
-
-        analysis = await gemini_service.analyze_repository_for_readme(repo_info, [], {})
-
         return {
             "repository": {
                 "name": repo_details["name"],
@@ -217,15 +220,13 @@ async def preview_generated_readme(
                 "stars": repo_details.get("stars"),
                 "forks": repo_details.get("forks"),
             },
-            "recommended_sections": analysis["recommended_sections"],
-            "custom_sections": analysis["custom_sections"],
+            "available_sections": DEFAULT_SECTION_TEMPLATES,
             "file_structure_preview": (
                 file_structure[:500] + "..."
                 if len(file_structure) > 500
                 else file_structure
             ),
             "code_samples_found": list(code_samples.keys()),
-            "analysis": analysis["analysis"],
         }
 
     except Exception as e:
@@ -237,6 +238,7 @@ async def preview_generated_readme(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to preview README generation: {str(e)}",
         )
+
 
 @router.get("/branches/{owner}/{repo}")
 async def get_repository_branches(
@@ -256,7 +258,7 @@ async def get_repository_branches(
         return {
             "repository": f"{owner}/{repo}",
             "branches": branches,
-            "total_count": len(branches)
+            "total_count": len(branches),
         }
 
     except Exception as e:
@@ -268,6 +270,7 @@ async def get_repository_branches(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get repository branches: {str(e)}",
         )
+
 
 @router.post("/branches/{owner}/{repo}")
 async def create_repository_branch(
@@ -284,12 +287,14 @@ async def create_repository_branch(
 
         await validate_repository_access(github_service, repo_url)
 
-        result = await github_service.create_branch(repo_url, branch_name, source_branch)
+        result = await github_service.create_branch(
+            repo_url, branch_name, source_branch
+        )
 
         return {
             "message": f"Branch '{branch_name}' created successfully",
             "branch": result,
-            "repository": f"{owner}/{repo}"
+            "repository": f"{owner}/{repo}",
         }
 
     except Exception as e:
@@ -302,96 +307,6 @@ async def create_repository_branch(
             detail=f"Failed to create branch: {str(e)}",
         )
 
-@router.get("/analyze/{owner}/{repo}")
-async def analyze_repository(
-    owner: str,
-    repo: str,
-    github_service: GitHubService = Depends(get_github_service),
-    gemini_service: GeminiService = Depends(get_gemini_service),
-    username: str = Depends(get_current_user),
-) -> Dict[str, Any]:
-    """
-    Analyze a repository to recommend README sections and structure.
-    """
-    try:
-        repo_url = f"{owner}/{repo}"
-
-        await validate_repository_access(github_service, repo_url)
-
-        repo_details = await github_service.get_repository_details(repo_url)
-
-        file_structure = await github_service.get_repository_file_structure(repo_url)
-
-        code_samples = await github_service.get_code_samples(repo_url)
-
-        repo_info = {
-            **repo_details,
-            "file_structure": file_structure,
-            "code_samples": code_samples,
-        }
-
-        files = []
-        for file_path in code_samples.keys():
-            files.append(
-                {
-                    "path": file_path,
-                    "type": "file",
-                    "size": len(code_samples[file_path]),
-                    "name": file_path.split("/")[-1],
-                }
-            )
-
-        analysis = await gemini_service.analyze_repository_for_readme(
-            repo_info, files, code_samples
-        )
-
-        recommended_templates = []
-        for i, section in enumerate(analysis["recommended_sections"]):
-            recommended_templates.append(
-                SectionTemplate(
-                    id=section["id"],
-                    name=section["name"],
-                    description=f"Recommended section for this repository",
-                    is_default=True,
-                    order=i + 1,
-                )
-            )
-
-        for i, section_name in enumerate(analysis["custom_sections"]):
-            custom_id = f"custom_{i+1}"
-            recommended_templates.append(
-                SectionTemplate(
-                    id=custom_id,
-                    name=section_name,
-                    description=f"Custom section for this repository",
-                    is_default=False,
-                    order=len(recommended_templates) + i + 1,
-                )
-            )
-
-        return {
-            "repository": {
-                "name": repo_details["name"],
-                "full_name": repo_details["full_name"],
-                "description": repo_details.get("description"),
-                "language": repo_details.get("language"),
-                "stars": repo_details.get("stars"),
-                "forks": repo_details.get("forks"),
-            },
-            "recommended_sections": recommended_templates,
-            "analysis": analysis["analysis"],
-        }
-
-    except Exception as e:
-        if isinstance(e, HTTPException):
-            raise e
-        if isinstance(e, GitHubException) or isinstance(e, ReadmeGenerationException):
-            raise e
-        raise ReadmeGenerationException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to analyze repository: {str(e)}",
-        )
-
 
 @router.get("/history", response_model=ReadmeHistoryResponse)
 async def get_readme_history(
@@ -402,21 +317,21 @@ async def get_readme_history(
 ):
     """Get user's README generation history."""
     try:
-        
+
         if page < 1:
             page = 1
         if page_size < 1 or page_size > 50:
             page_size = 10
-            
+
         result = await get_user_readme_history(
             username=username,
             page=page,
             page_size=page_size,
-            repository_filter=repository_filter
+            repository_filter=repository_filter,
         )
-        
+
         return ReadmeHistoryResponse(**result)
-        
+
     except Exception as e:
         raise ReadmeGenerationException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -431,16 +346,16 @@ async def get_readme_history_entry(
 ):
     """Get a specific README history entry."""
     try:
-        
+
         entry = await get_readme_history_entry(entry_id, username)
         if not entry:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="README history entry not found"
+                detail="README history entry not found",
             )
-            
+
         return entry
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -458,32 +373,30 @@ async def download_readme_from_history(
 ):
     """Download a README from history."""
     try:
-        
+
         entry = await get_readme_history_entry(entry_id, username)
         if not entry:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="README history entry not found"
+                detail="README history entry not found",
             )
-            
+
         # Generate filename if not provided
         if not filename:
             filename = f"{entry.repository_name}_README_{entry.created_at.strftime('%Y%m%d_%H%M%S')}.md"
-        
+
         # Create temporary file
         with tempfile.NamedTemporaryFile(delete=False, suffix=".md") as tmp:
             tmp.write(entry.content.encode("utf-8"))
             tmp_path = tmp.name
 
         response = FileResponse(
-            path=tmp_path, 
-            media_type="text/markdown", 
-            filename=filename
+            path=tmp_path, media_type="text/markdown", filename=filename
         )
 
         response.background = lambda: os.unlink(tmp_path)
         return response
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -505,7 +418,7 @@ async def delete_readme_history_entry(
         if not deleted:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="README history entry not found"
+                detail="README history entry not found",
             )
 
         return {"message": "README history entry deleted successfully"}
@@ -528,7 +441,7 @@ async def clear_readme_history(
         deleted_count = await clear_all_readme_history(username)
         return {
             "message": f"Successfully cleared {deleted_count} history entries",
-            "deleted_count": deleted_count
+            "deleted_count": deleted_count,
         }
     except Exception as e:
         raise ReadmeGenerationException(
@@ -543,10 +456,10 @@ async def get_readme_stats(
 ):
     """Get README generation statistics for the user."""
     try:
-        
+
         stats = await get_user_readme_stats(username)
         return stats
-        
+
     except Exception as e:
         raise ReadmeGenerationException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
