@@ -181,7 +181,7 @@ class GeminiService:
 
             # Get section-specific prompt for AI-generated sections
             section_prompt = ReadmePrompts.get_section_specific_prompt(
-                section, repo_info
+                section, repo_info, sections
             )
 
             # Add code samples context if relevant for the section
