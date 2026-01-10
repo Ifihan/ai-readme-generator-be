@@ -1,5 +1,6 @@
 import httpx
 import jwt
+from urllib.parse import urlparse
 
 import logging
 logger = logging.getLogger(__name__)
@@ -29,6 +30,30 @@ from app.config import settings
 from app.exceptions import AuthException
 
 router = APIRouter(prefix="/auth")
+
+def _validate_redirect_url(url: str) -> str:
+    """
+    Validate redirect URL to prevent open redirect vulnerabilities.
+    Only allows relative paths or same-origin URLs.
+    """
+    # Remove backslashes that could be used to bypass checks
+    url = url.replace("\\", "")
+
+    # Parse the URL
+    parsed = urlparse(url)
+
+    # If it's a relative path (no scheme/netloc), it's safe
+    if not parsed.scheme and not parsed.netloc:
+        return url
+
+    # If it has a scheme/netloc, validate it's from settings. This prevents redirects to arbitrary external sites
+    allowed_redirect_base = urlparse(settings.REDIRECT_URL)
+    if parsed.scheme == allowed_redirect_base.scheme and parsed.netloc == allowed_redirect_base.netloc:
+        return url
+
+    # If validation fails, return a safe default
+    logger.warning(f"Attempted redirect to unauthorized URL: {url}")
+    return settings.REDIRECT_URL
 
 @router.get("/login", response_model=None)
 async def login(
@@ -491,11 +516,15 @@ async def oauth_callback(
             # Only use error if it's in the allowed list, otherwise use generic error
             safe_error = error if error in allowed_errors else "unknown_error"
             redirect_url = f"{settings.REDIRECT_URL}?error={safe_error}"
-            return RedirectResponse(url=redirect_url)
+            # Validate redirect URL to prevent open redirect
+            validated_url = _validate_redirect_url(redirect_url)
+            return RedirectResponse(url=validated_url)
 
         if not code:
             redirect_url = f"{settings.REDIRECT_URL}?error=no_code"
-            return RedirectResponse(url=redirect_url)
+            # Validate redirect URL to prevent open redirect
+            validated_url = _validate_redirect_url(redirect_url)
+            return RedirectResponse(url=validated_url)
 
         token_data = await get_oauth_access_token(code)
         oauth_access_token = token_data["access_token"]
