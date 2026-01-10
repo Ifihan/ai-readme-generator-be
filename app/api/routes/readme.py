@@ -102,7 +102,8 @@ async def refine_readme(
         content = await gemini_service.refine_readme(request.content, request.feedback)
 
         # For refinement, parse the content to see what sections are present
-        section_pattern = re.compile(r"^#+\s+(.+)$", re.MULTILINE)
+        # Use a more efficient pattern with length limit to prevent ReDoS
+        section_pattern = re.compile(r"^#+\s+([^\n]{1,200})$", re.MULTILINE)
         sections_generated = section_pattern.findall(content)
 
         # Save refined README to history

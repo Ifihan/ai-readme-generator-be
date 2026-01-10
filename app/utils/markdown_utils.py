@@ -9,7 +9,8 @@ def extract_sections_from_markdown(markdown_text: str) -> Dict[str, str]:
         return {}
 
     # Split the text by headings (# Heading)
-    pattern = r"^(#{1,3})\s+(.+?)$"
+    # Use a more efficient pattern with character class and length limit
+    pattern = r"^(#{1,3})\s+([^\n]{1,200})$"
 
     lines = markdown_text.split("\n")
     sections = {}
@@ -17,7 +18,7 @@ def extract_sections_from_markdown(markdown_text: str) -> Dict[str, str]:
     current_content = []
 
     for line in lines:
-        heading_match = re.match(pattern, line, re.MULTILINE)
+        heading_match = re.match(pattern, line)
 
         if heading_match:
             # If we were processing a section before, save it
