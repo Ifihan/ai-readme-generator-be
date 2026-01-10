@@ -1,6 +1,9 @@
 import httpx
 import jwt
 
+import logging
+logger = logging.getLogger(__name__)
+
 from fastapi import (
     APIRouter,
     HTTPException,
@@ -462,10 +465,13 @@ async def get_user_status(username: str) -> JSONResponse:
             )
 
     except Exception as e:
+        logger.error(f"Error checking user status: {str(e)}", exc_info=True)
+
+        # Return generic error message to user
         return JSONResponse(
             {
                 "status": "error",
-                "message": f"Error checking user status: {str(e)}",
+                "message": "An error occurred while checking user status. Please try again.",
                 "next_step": "signup",
             },
             status_code=500,
@@ -478,9 +484,13 @@ async def oauth_callback(
 ) -> RedirectResponse:
     """Handle GitHub OAuth callback and determine user flow."""
     try:
-        if error:
+        # Validate and sanitize error parameter to prevent open redirect
+        allowed_errors = ["access_denied", "no_code", "invalid_request", "unauthorized"]
 
-            redirect_url = f"{settings.REDIRECT_URL}?error={error}"
+        if error:
+            # Only use error if it's in the allowed list, otherwise use generic error
+            safe_error = error if error in allowed_errors else "unknown_error"
+            redirect_url = f"{settings.REDIRECT_URL}?error={safe_error}"
             return RedirectResponse(url=redirect_url)
 
         if not code:

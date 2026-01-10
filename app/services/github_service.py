@@ -34,15 +34,20 @@ class GitHubService:
 
     def _parse_repo_url(self, repo_url: str) -> tuple:
         """Parse a GitHub repository URL to extract owner and repo name."""
-        # Handle different URL formats
-        if "github.com" in repo_url:
-            path = urlparse(repo_url).path.strip("/")
+        # Handle different URL formats with proper domain validation
+        if repo_url.startswith(("http://", "https://")):
+            parsed = urlparse(repo_url)
+            # Validate that it's actually github.com domain
+            if parsed.netloc not in ["github.com", "www.github.com"]:
+                raise ValueError(f"Only GitHub repository URLs are supported: {repo_url}")
+            path = parsed.path.strip("/")
         else:
+            # Assume it's owner/repo format
             path = repo_url.strip("/")
 
         parts = path.split("/")
         if len(parts) >= 2:
-            return parts[0], parts[1]
+            return parts[0], parts[1].rstrip(".git")
         else:
             raise ValueError(f"Invalid GitHub repository URL: {repo_url}")
 

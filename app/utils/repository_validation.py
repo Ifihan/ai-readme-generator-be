@@ -1,4 +1,5 @@
 from typing import Tuple, Optional
+from urllib.parse import urlparse
 import httpx
 import logging
 from fastapi import HTTPException, status
@@ -7,18 +8,36 @@ logger = logging.getLogger(__name__)
 
 def parse_repo_url(repo_url: str) -> Tuple[str, str]:
     """Parse a GitHub repository URL to extract owner and repo name."""
-    if "/" in repo_url:
+    # Handle simple owner/repo format
+    if "/" in repo_url and not repo_url.startswith(("http://", "https://")):
         parts = repo_url.split("/")
-        if "github.com" in repo_url:
-            for i, part in enumerate(parts):
-                if part == "github.com" or part.endswith("github.com"):
-                    if i + 2 < len(parts):
-                        return parts[i + 1], parts[i + 2].split(".git")[0]
-
         if len(parts) >= 2:
             return parts[-2], parts[-1].split(".git")[0]
 
-    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid repository URL format. Please use 'owner/repo' or a full GitHub URL.")
+    # Handle full URLs - use proper URL parsing
+    if repo_url.startswith(("http://", "https://")):
+        try:
+            parsed = urlparse(repo_url)
+            # Validate that it's actually github.com domain
+            if parsed.netloc not in ["github.com", "www.github.com"]:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Only GitHub repository URLs are supported."
+                )
+
+            # Extract owner and repo from path
+            path_parts = [p for p in parsed.path.split("/") if p]
+            if len(path_parts) >= 2:
+                owner = path_parts[0]
+                repo = path_parts[1].split(".git")[0]
+                return owner, repo
+        except Exception as e:
+            logger.error(f"Error parsing repository URL: {str(e)}")
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Invalid repository URL format. Please use 'owner/repo' or a full GitHub URL."
+    )
 
 async def check_installation_repo_access(
     access_token: str, owner: str, repo: str
