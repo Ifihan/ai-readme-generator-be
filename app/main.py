@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
@@ -8,10 +10,21 @@ from app.api.routes import auth, readme, webhooks, feedback, admin
 from app.middlewares import SessionMiddleware
 from app.db.mongodb import connect_to_mongodb, close_mongodb_connection
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage MongoDB connection lifecycle (startup/shutdown)."""
+    await connect_to_mongodb()
+    yield
+    await close_mongodb_connection()
+
+
 def create_application() -> FastAPI:
     """Create the FastAPI application instance."""
     application = FastAPI(
-        title=settings.PROJECT_NAME, openapi_url=f"{settings.API_V1_STR}/openapi.json"
+        title=settings.PROJECT_NAME,
+        openapi_url=f"{settings.API_V1_STR}/openapi.json",
+        lifespan=lifespan,
     )
 
     original_openapi = application.openapi
@@ -75,10 +88,6 @@ def create_application() -> FastAPI:
     )
 
     add_exception_handlers(application)
-
-    # Add MongoDB connection events
-    application.add_event_handler("startup", connect_to_mongodb)
-    application.add_event_handler("shutdown", close_mongodb_connection)
 
     return application
 

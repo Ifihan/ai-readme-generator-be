@@ -2,10 +2,9 @@ from typing import List, Dict, Any
 import logging
 import os
 import re
-from langchain.prompts import ChatPromptTemplate
-from langchain.schema import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.memory import ConversationBufferMemory
 from app.schemas.readme import ReadmeSection, ReadmeGenerationRequest
 from app.services.github_service import GitHubService
 from app.services.readme_prompts import ReadmePrompts
@@ -35,11 +34,6 @@ class GeminiService:
 
         # Initialize the Gemini model with LangChain wrapper
         self.llm = self._create_llm(self.default_max_tokens)
-
-        # Create conversation memory
-        self.memory = ConversationBufferMemory(
-            memory_key="chat_history", return_messages=True
-        )
 
     def _create_llm(self, max_tokens: int) -> ChatGoogleGenerativeAI:
         """Create a Gemini LLM instance with specified token limit."""
@@ -305,7 +299,7 @@ class GeminiService:
         analyze_chain = analyze_template | self.llm | StrOutputParser()
 
         try:
-            sections_to_refine = await analyze_chain.ainvoke({}).strip()
+            sections_to_refine = (await analyze_chain.ainvoke({})).strip()
 
             if sections_to_refine.upper() == "ALL":
                 # If feedback applies to everything, try a different approach
